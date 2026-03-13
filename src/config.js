@@ -15,5 +15,3 @@ const getWsUrl = () => {
 
 export const API_BASE_URL = getBaseUrl();
 export const WS_BASE_URL = getWsUrl();
-
-//n

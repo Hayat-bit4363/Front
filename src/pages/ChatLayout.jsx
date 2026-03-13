@@ -3,6 +3,7 @@ import Sidebar from '../components/Sidebar';
 import ChatWindow from '../components/ChatWindow';
 import api from '../services/api';
 import { chatSocket, notificationSocket } from '../services/websocket';
+import { WS_BASE_URL } from '../config';
 import { useAuth } from '../context/AuthContext';
 
 const ChatLayout = () => {
@@ -16,7 +17,7 @@ const ChatLayout = () => {
         fetchConversations();
 
         // Connect Global Notifications
-        notificationSocket.connect(`ws://localhost:8001/ws/notifications/`);
+        notificationSocket.connect(`${WS_BASE_URL}/ws/notifications/`);
         notificationSocket.on('notify', (data) => {
             console.log("Notification:", data);
 
@@ -76,7 +77,7 @@ const ChatLayout = () => {
             fetchMessages(selectedConvId);
 
             chatSocket.disconnect();
-            chatSocket.connect(`ws://localhost:8001/ws/chat/${selectedConvId}/`);
+            chatSocket.connect(`${WS_BASE_URL}/ws/chat/${selectedConvId}/`);
 
             chatSocket.on('chat_message', (data) => {
                 // Signal sends 'message' which is the serialized message object

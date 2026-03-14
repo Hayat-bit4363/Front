@@ -124,28 +124,55 @@ const ChatLayout = () => {
     const selectedConversation = conversations.find(c => c.id === selectedConvId);
 
     return (
-        <div style={styles.layout}>
-            <Sidebar
-                conversations={conversations}
-                selectConversation={setSelectedConvId}
-                selectedConversationId={selectedConvId}
-                currentUser={user}
-                onNewConversation={handleNewConversation}
-            />
-            <ChatWindow
-                conversation={selectedConversation}
-                messages={messages}
-                currentUser={user}
-                onMessageSent={() => { }}
-            />
-            <button onClick={logout} style={styles.logoutBtn}>Logout</button>
+        <div style={styles.layout} className="chat-layout">
+            {/* On mobile, only show Sidebar if no conversation is selected */}
+            <div style={styles.sidebarWrapper} className={selectedConvId ? 'mobile-hide' : 'sidebar-mobile'}>
+                <Sidebar
+                    conversations={conversations}
+                    selectConversation={setSelectedConvId}
+                    selectedConversationId={selectedConvId}
+                    currentUser={user}
+                    onNewConversation={handleNewConversation}
+                />
+            </div>
+            
+            {/* On mobile, only show ChatWindow if a conversation is selected */}
+            <div style={styles.chatWrapper} className={!selectedConvId ? 'mobile-hide' : 'mobile-full'}>
+                {selectedConvId && (
+                    <button 
+                        style={styles.backBtn} 
+                        onClick={() => setSelectedConvId(null)}
+                        className="mobile-back"
+                    >
+                        ← Back
+                    </button>
+                )}
+                <ChatWindow
+                    conversation={selectedConversation}
+                    messages={messages}
+                    currentUser={user}
+                    onMessageSent={() => { }}
+                />
+            </div>
+            <button onClick={logout} style={styles.logoutBtn} className="mobile-hide">Logout</button>
         </div>
     );
 };
 
 const styles = {
     layout: {
-        display: 'flex', height: 'calc(100vh - 60px)', backgroundColor: 'var(--bg-color)', position: 'relative'
+        display: 'flex', height: 'calc(100vh - 60px)', backgroundColor: 'var(--bg-color)', position: 'relative', overflow: 'hidden'
+    },
+    sidebarWrapper: {
+        height: '100%'
+    },
+    chatWrapper: {
+        flex: 1, height: '100%', position: 'relative', display: 'flex', flexDirection: 'column'
+    },
+    backBtn: {
+        padding: '10px 15px', background: 'var(--bg-paper)', border: 'none', borderBottom: '1px solid var(--border-color)',
+        cursor: 'pointer', textAlign: 'left', fontWeight: 'bold', color: 'var(--primary-color)',
+        display: 'none' // Hidden on desktop, shown via mobile-back CSS
     },
     logoutBtn: {
         position: 'absolute', bottom: '1rem', left: '1rem',

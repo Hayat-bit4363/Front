@@ -35,3 +35,48 @@ body {
 ::-webkit-scrollbar-track { background: transparent; }
 ::-webkit-scrollbar-thumb { background: #bcc0c4; border-radius: 4px; }
 ::-webkit-scrollbar-thumb:hover { background: #a0a4a8; }
+
+/* Mobile Utilities */
+.mobile-hide {
+  @media (max-width: 768px) {
+    display: none !important;
+  }
+}
+
+.mobile-full {
+  @media (max-width: 768px) {
+    width: 100% !important;
+    max-width: 100% !important;
+    border: none !important;
+  }
+}
+
+/* Base Responsive styles */
+@media (max-width: 768px) {
+  :root {
+    --nav-height: 50px;
+  }
+  
+  body {
+    font-size: 14px;
+  }
+
+  /* Chat layouts usually need specialized mobile treatment */
+  .chat-layout {
+    flex-direction: column !important;
+  }
+
+  .sidebar-mobile {
+    width: 100% !important;
+    height: 100% !important;
+  }
+
+  .mobile-back {
+    display: block !important;
+  }
+
+  /* Force sidebar and chat components to respect parent width */
+  div[style*="width: 400px"] {
+    width: 100% !important;
+  }
+}

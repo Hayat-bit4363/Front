@@ -47,7 +47,7 @@ const RegisterPage = () => {
 
     return (
         <div style={styles.container}>
-            <div style={styles.formCard}>
+            <div style={styles.formCard} className="mobile-full">
                 <h2 style={styles.title}>Register</h2>
                 {error && <p style={styles.error}>{error}</p>}
                 <form onSubmit={handleSubmit} style={styles.form}>
@@ -100,7 +100,7 @@ const styles = {
     },
     formCard: {
         backgroundColor: 'var(--sidebar-bg)', padding: '2rem', borderRadius: '1rem',
-        width: '100%', maxWidth: '400px', boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1)'
+        width: '90%', maxWidth: '400px', boxShadow: '0 4px 60px rgba(0, 0, 0, 0.1)'
     },
     title: { textAlign: 'center', marginBottom: '2rem', color: 'var(--text-primary)' },
     form: { display: 'flex', flexDirection: 'column', gap: '1rem' },

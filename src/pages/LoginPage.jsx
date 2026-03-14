@@ -24,11 +24,11 @@ const LoginPage = () => {
             <div style={styles.backgroundGlow}></div>
             <div style={styles.content}>
                 <div style={styles.brandSection}>
-                    <h1 style={styles.brandTitle}>Hayat<span style={styles.brandAccent}>Chat</span></h1>
-                    <p style={styles.brandTagline}>Connect freely, chat securely.</p>
+                    <h1 style={styles.brandTitle} className="mobile-hide">Hayat<span style={styles.brandAccent}>Chat</span></h1>
+                    <p style={styles.brandTagline} className="mobile-hide">Connect freely, chat securely.</p>
                 </div>
 
-                <div style={styles.glassCard}>
+                <div style={styles.glassCard} className="mobile-full">
                     <h2 style={styles.formTitle}>Welcome Back</h2>
                     {error && <div style={styles.errorAlert}>{error}</div>}
 
@@ -130,8 +130,8 @@ const styles = {
         backdropFilter: 'blur(20px)',
         border: '1px solid rgba(255, 255, 255, 0.1)',
         borderRadius: '1.5rem',
-        padding: '2.5rem',
-        width: '100%',
+        padding: '2rem',
+        width: '90%',
         boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.5)',
     },
     formTitle: {

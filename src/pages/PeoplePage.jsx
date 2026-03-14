@@ -148,7 +148,7 @@ const styles = {
     tab: { background: 'none', border: 'none', padding: '8px 16px', cursor: 'pointer', color: 'var(--text-secondary)', fontSize: '1rem', fontWeight: '500' },
     activeTab: { background: 'var(--input-bg)', border: 'none', padding: '8px 16px', cursor: 'pointer', color: 'var(--primary-color)', fontSize: '1rem', fontWeight: '600', borderRadius: '20px' },
     content: {},
-    grid: { display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: '20px' },
+    grid: { display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(150px, 1fr))', gap: '15px' },
     card: { backgroundColor: 'var(--bg-paper)', padding: '20px', borderRadius: '12px', textAlign: 'center', boxShadow: '0 2px 8px rgba(0,0,0,0.05)' },
     avatar: { width: '80px', height: '80px', borderRadius: '50%', objectFit: 'cover', marginBottom: '10px', border: '3px solid var(--bg-color)' },
     info: { marginBottom: '15px' },

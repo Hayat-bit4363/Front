@@ -12,21 +12,21 @@ const Navbar = () => {
     return (
         <div style={styles.navbar}>
             <div style={styles.left}>
-                <h2 style={{ ...styles.logo, color: primaryColor }} onClick={() => navigate('/')}>HayatSocial</h2>
-                <div style={styles.searchWrapper}>
+                <h2 style={{ ...styles.logo, color: primaryColor }} onClick={() => navigate('/')}>H<span className="mobile-hide">ayat</span>Social</h2>
+                <div style={styles.searchWrapper} className="mobile-hide">
                     <input placeholder="Search..." style={styles.search} />
                 </div>
             </div>
 
             <div style={styles.center}>
                 <button onClick={() => navigate('/')} style={styles.navBtn} title="Home">
-                    <span style={{ fontSize: '1.8rem', color: primaryColor }}>🏠</span>
+                    <span style={{ fontSize: '1.5rem', color: primaryColor }}>🏠</span>
                 </button>
                 <button onClick={() => navigate('/messenger')} style={styles.navBtn} title="Messenger">
-                    <span style={{ fontSize: '1.8rem' }}>💬</span>
+                    <span style={{ fontSize: '1.5rem' }}>💬</span>
                 </button>
                 <button onClick={() => navigate('/people')} style={styles.navBtn} title="People">
-                    <span style={{ fontSize: '1.8rem' }}>👥</span>
+                    <span style={{ fontSize: '1.5rem' }}>👥</span>
                 </button>
             </div>
 
@@ -81,9 +81,9 @@ const styles = {
     },
     center: { display: 'flex', gap: '10px', height: '100%', alignItems: 'center' },
     navBtn: {
-        width: '100px', background: 'none', border: 'none', cursor: 'pointer',
+        width: 'auto', minWidth: '50px', background: 'none', border: 'none', cursor: 'pointer',
         height: '50px', borderRadius: '10px', display: 'flex', alignItems: 'center', justifyContent: 'center',
-        transition: 'background-color 0.2s'
+        transition: 'background-color 0.2s', padding: '0 10px'
     },
     right: { display: 'flex', alignItems: 'center', gap: '15px' },
     iconBtn: {

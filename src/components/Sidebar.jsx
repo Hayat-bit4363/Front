@@ -9,6 +9,11 @@ const Sidebar = ({ conversations, selectConversation, selectedConversationId, cu
     const [searchTerm, setSearchTerm] = useState('');
     const [searchResults, setSearchResults] = useState([]);
     const [showSearch, setShowSearch] = useState(false);
+    const [statuses, setStatuses] = useState([]);
+    const [showStatusForm, setShowStatusForm] = useState(false);
+    const [selectedStatus, setSelectedStatus] = useState(null);
+    const [statusImage, setStatusImage] = useState(null);
+    const [statusCaption, setStatusCaption] = useState('');
 
     const getMediaUrl = (path) => {
         if (!path) return null;
@@ -40,6 +45,32 @@ const Sidebar = ({ conversations, selectConversation, selectedConversationId, cu
             console.error("Failed to start chat", e);
         }
     };
+
+    const fetchStatuses = async () => {
+        try {
+            const res = await api.get('chat/status/');
+            setStatuses(res.data);
+        } catch (err) { console.error(err); }
+    };
+
+    const handleStatusUpload = async (e) => {
+        e.preventDefault();
+        if (!statusImage) return;
+        const formData = new FormData();
+        formData.append('image', statusImage);
+        formData.append('caption', statusCaption);
+        try {
+            await api.post('chat/status/create/', formData, { headers: { 'Content-Type': 'multipart/form-data' } });
+            setShowStatusForm(false);
+            setStatusImage(null);
+            setStatusCaption('');
+            fetchStatuses();
+        } catch (err) { console.error(err); }
+    };
+
+    React.useEffect(() => {
+        if (activeTab === 'status') fetchStatuses();
+    }, [activeTab]);
 
     return (
         <div style={styles.sidebar}>
@@ -124,15 +155,52 @@ const Sidebar = ({ conversations, selectConversation, selectedConversationId, cu
                 {/* People tab removed - moved to Main Layout */}
 
                 {activeTab === 'status' && (
-                    <div style={styles.placeholderState}>
-                        <h4>Status</h4>
-                        <div style={styles.item}>
-                            <div style={styles.avatar}>+</div>
+                    <div style={styles.statusSection}>
+                        <div style={styles.item} onClick={() => setShowStatusForm(true)}>
+                            <div style={{ ...styles.avatar, backgroundColor: 'var(--primary-color)' }}>＋</div>
                             <div style={styles.info}>
                                 <div style={styles.name}>My Status</div>
-                                <div style={styles.preview}>Click to add status update</div>
+                                <div style={styles.preview}>Add a new update</div>
                             </div>
                         </div>
+                        
+                        <div style={{ padding: '20px 16px', color: 'var(--primary-color)', fontSize: '0.9rem', fontWeight: 'bold' }}>RECENT UPDATES</div>
+                        
+                        {statuses.map(s => (
+                            <div key={s.id} style={styles.item} onClick={() => setSelectedStatus(s)}>
+                                <div style={{ ...styles.avatar, border: '2px solid var(--primary-color)' }}>
+                                    <img src={getMediaUrl(s.image)} style={styles.avatarImg} />
+                                </div>
+                                <div style={styles.info}>
+                                    <div style={styles.name}>{s.user.username}</div>
+                                    <div style={styles.preview}>{new Date(s.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</div>
+                                </div>
+                            </div>
+                        ))}
+
+                        {showStatusForm && (
+                            <div style={styles.modalOverlay}>
+                                <div style={styles.modal}>
+                                    <h3>Share Status</h3>
+                                    <input type="file" onChange={e => setStatusImage(e.target.files[0])} accept="image/*" style={{ marginBottom: '15px' }} />
+                                    <input style={styles.statusInput} placeholder="Add a caption..." value={statusCaption} onChange={e => setStatusCaption(e.target.value)} />
+                                    <div style={styles.modalActions}>
+                                        <button onClick={() => setShowStatusForm(false)} style={styles.cancelBtn}>Cancel</button>
+                                        <button onClick={handleStatusUpload} style={styles.saveBtn}>Post</button>
+                                    </div>
+                                </div>
+                            </div>
+                        )}
+
+                        {selectedStatus && (
+                            <div style={{ ...styles.modalOverlay, backgroundColor: '#000' }} onClick={() => setSelectedStatus(null)}>
+                                <div style={styles.statusViewer}>
+                                    <img src={getMediaUrl(selectedStatus.image)} style={styles.viewerImg} />
+                                    <div style={styles.viewerCaption}>{selectedStatus.caption}</div>
+                                    <div style={styles.viewerHeader}>{selectedStatus.user.username}</div>
+                                </div>
+                            </div>
+                        )}
                     </div>
                 )}
 
@@ -187,8 +255,18 @@ const styles = {
     name: { fontWeight: '400', fontSize: '1.1rem', color: '#111b21' },
     date: { fontSize: '0.75rem', color: '#667781' },
     preview: { fontSize: '0.9rem', color: '#667781', overflow: 'hidden', whiteSpace: 'nowrap', textOverflow: 'ellipsis' },
-    placeholderState: { padding: '20px' },
-    settingsList: { padding: '10px' }
+    settingsList: { padding: '10px' },
+    statusSection: { display: 'flex', flexDirection: 'column' },
+    modalOverlay: { position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000 },
+    modal: { backgroundColor: '#fff', padding: '24px', borderRadius: '12px', width: '320px', display: 'flex', flexDirection: 'column' },
+    statusInput: { padding: '10px', borderRadius: '8px', border: '1px solid #ddd', marginBottom: '15px', outline: 'none' },
+    modalActions: { display: 'flex', gap: '10px', justifyContent: 'flex-end' },
+    cancelBtn: { padding: '8px 16px', border: 'none', background: '#eee', borderRadius: '4px', cursor: 'pointer' },
+    saveBtn: { padding: '8px 16px', border: 'none', background: 'var(--primary-color)', color: '#fff', borderRadius: '4px', cursor: 'pointer' },
+    statusViewer: { position: 'relative', width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center' },
+    viewerImg: { maxWidth: '100%', maxHeight: '100%', objectFit: 'contain' },
+    viewerCaption: { position: 'absolute', bottom: '40px', left: 0, width: '100%', textAlign: 'center', color: '#fff', fontSize: '1.2rem', textShadow: '0 2px 4px rgba(0,0,0,0.8)', padding: '0 20px' },
+    viewerHeader: { position: 'absolute', top: '20px', left: '20px', color: '#fff', fontSize: '1.1rem', fontWeight: 'bold', backgroundColor: 'rgba(0,0,0,0.3)', padding: '5px 15px', borderRadius: '20px' }
 };
 
 export default Sidebar;

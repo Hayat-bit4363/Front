@@ -5,7 +5,7 @@ import { BASE_URL } from '../config';
 
 const ChatWindow = ({ conversation, messages, currentUser, onMessageSent, setMessages }) => {
     const [text, setText] = useState('');
-    const [image, setImage] = useState(null);
+    const [selectedFile, setSelectedFile] = useState(null);
     const [audioBlob, setAudioBlob] = useState(null);
     const [isRecording, setIsRecording] = useState(false);
     const [contextMenu, setContextMenu] = useState({ visible: false, x: 0, y: 0, msgId: null });
@@ -89,7 +89,7 @@ const ChatWindow = ({ conversation, messages, currentUser, onMessageSent, setMes
         const formData = new FormData();
         formData.append('conversation', conversation.id);
         if (text) formData.append('text', text);
-        if (image) formData.append('image', image);
+        if (selectedFile) formData.append('image', selectedFile); // Backend field name is still 'image'
         if (audioBlob) formData.append('audio', audioBlob, `voice_note.${audioExt}`);
 
         try {
@@ -98,7 +98,7 @@ const ChatWindow = ({ conversation, messages, currentUser, onMessageSent, setMes
             });
             onMessageSent(res.data);
             setText('');
-            setImage(null);
+            setSelectedFile(null);
             setAudioBlob(null);
         } catch (err) {
             console.error("Send failed", err);
@@ -262,11 +262,16 @@ const ChatWindow = ({ conversation, messages, currentUser, onMessageSent, setMes
                     type="file"
                     ref={fileInputRef}
                     style={{ display: 'none' }}
-                    onChange={e => setImage(e.target.files[0])}
-                    accept="image/*"
+                    onChange={e => setSelectedFile(e.target.files[0])}
+                    accept="image/*,video/*"
                 />
 
-                {image && <div style={styles.preview}>{image.name} <button onClick={() => setImage(null)}>x</button></div>}
+                {selectedFile && (
+                    <div style={styles.preview}>
+                        {selectedFile.type.startsWith('image/') ? '📷' : '🎥'} {selectedFile.name} 
+                        <button type="button" onClick={() => setSelectedFile(null)} style={styles.clearBtn}>✕</button>
+                    </div>
+                )}
 
                 {audioBlob ? (
                     <div style={styles.preview}>Audio Recorded <button onClick={() => setAudioBlob(null)}>x</button> <button onClick={handleSend}>Send</button></div>
@@ -285,10 +290,13 @@ const ChatWindow = ({ conversation, messages, currentUser, onMessageSent, setMes
                     </>
                 )}
 
-                {!isRecording && !audioBlob && text.length === 0 && (
+                {!isRecording && !audioBlob && !text && !selectedFile && (
                     <button type="button" style={styles.iconBtn} onClick={startRecording}>🎤</button>
                 )}
-                {text.length > 0 && <button type="submit" style={{ ...styles.sendBtn, color: 'var(--primary-color)' }}>➤</button>}
+
+                {(text.length > 0 || selectedFile || audioBlob) && !isRecording && (
+                    <button type="submit" style={styles.sendBtn}>➤</button>
+                )}
             </form>
         </div>
     );

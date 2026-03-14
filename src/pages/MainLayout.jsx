@@ -16,27 +16,26 @@ const MainLayout = () => {
         const authUrl = token ? `?token=${token}` : '';
 
         // Connect Global Notifications
+        console.log(`MainLayout: Connecting to Notification WS for ${user.username}...`);
         notificationSocket.connect(`${WS_BASE_URL}/ws/notifications/${authUrl}`);
 
         const handleCall = (data) => {
-            if (data.type === 'call_signal') {
-                if (data.signal === 'init' && data.sender !== user.username) {
-                    setIncomingCall(data);
-                } else if (data.signal === 'rejected') {
-                    alert(`${data.sender} rejected the call`);
-                    setIncomingCall(null);
-                } else if (data.signal === 'accepted') {
-                    alert(`${data.sender} accepted your call! (WebRTC connection starting...)`);
-                }
+            console.log("MainLayout: Call Signal Received!", data);
+            if (data.signal === 'init' && data.sender !== user.username) {
+                setIncomingCall(data);
+            } else if (data.signal === 'rejected') {
+                alert(`${data.sender} rejected the call`);
+                setIncomingCall(null);
+            } else if (data.signal === 'accepted') {
+                alert(`${data.sender} accepted your call! (Establishing connection...)`);
             }
         };
 
-        notificationSocket.on('message', handleCall);
+        notificationSocket.on('call_signal', handleCall);
 
         return () => {
-            notificationSocket.off('message', handleCall);
-            // We DON'T disconnect here because MainLayout might persist,
-            // but we can if we want full cleanup on logout.
+            console.log("MainLayout: Cleaning up listeners...");
+            notificationSocket.off('call_signal', handleCall);
         };
     }, [user?.username]);
 

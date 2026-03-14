@@ -39,10 +39,10 @@ class WebSocketService {
 
     send(data) {
         if (this.socket && this.socket.readyState === WebSocket.OPEN) {
-            console.log("WebSocket Sending:", data);
+            console.log("[WS OUTGOING]:", JSON.stringify(data, null, 2));
             this.socket.send(JSON.stringify(data));
         } else {
-            console.error("WebSocket Send Failed: Socket not connected", { socket: !!this.socket, readyState: this.socket?.readyState });
+            console.error("[WS ERROR]: Send Failed. Socket state:", this.socket?.readyState);
         }
     }
 

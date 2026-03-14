@@ -57,6 +57,17 @@ const Feed = () => {
         ));
     };
 
+    const handleShare = async (postId) => {
+        try {
+            const res = await api.post(`posts/${postId}/share/`);
+            setPosts([res.data, ...posts]);
+            alert("Post shared successfully!");
+        } catch (err) {
+            console.error(err);
+            alert("Failed to share post.");
+        }
+    };
+
     return (
         <div style={styles.feedContainer}>
             {/* Create Post */}
@@ -76,6 +87,11 @@ const Feed = () => {
             {/* Posts */}
             {posts.map(post => (
                 <div key={post.id} style={styles.post}>
+                    {post.original_post && (
+                        <div style={styles.sharedIndicator}>
+                            🔄 Shared from {post.original_post.author.username}
+                        </div>
+                    )}
                     <div style={styles.postHeader}>
                         {post.author.avatar ? <img src={post.author.avatar} style={styles.avatar} /> : <div style={{ ...styles.avatarPlaceholder, backgroundColor: primaryColor }}>{post.author.username[0]}</div>}
                         <div>
@@ -86,6 +102,9 @@ const Feed = () => {
 
                     <div style={styles.postContent}>{post.content}</div>
                     {post.image && <img src={post.image} style={styles.postImage} />}
+                    {!post.image && post.original_post && post.original_post.image && (
+                         <img src={post.original_post.image} style={styles.postImage} alt="original" />
+                    )}
 
                     <div style={styles.postStats}>
                         <span style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
@@ -102,7 +121,7 @@ const Feed = () => {
                             ThumbUp
                         </button>
                         <button style={styles.actionBtn}>Comment</button>
-                        <button style={styles.actionBtn}>Share</button>
+                        <button style={styles.actionBtn} onClick={() => handleShare(post.id)}>Share</button>
                     </div>
 
                     <CommentSection
@@ -143,7 +162,8 @@ const styles = {
     postImage: { width: '100%', objectFit: 'cover', maxHeight: '500px' },
     postStats: { padding: '10px 16px', borderBottom: '1px solid var(--border-color)', color: 'var(--text-secondary)', fontSize: '0.9rem', display: 'flex', justifyContent: 'space-between' },
     postActions: { display: 'flex', padding: '4px' },
-    actionBtn: { flex: 1, background: 'none', border: 'none', padding: '10px', cursor: 'pointer', fontWeight: '600', color: 'var(--text-secondary)', borderRadius: '8px', transition: 'background-color 0.2s' }
+    actionBtn: { flex: 1, background: 'none', border: 'none', padding: '10px', cursor: 'pointer', fontWeight: '600', color: 'var(--text-secondary)', borderRadius: '8px', transition: 'background-color 0.2s' },
+    sharedIndicator: { padding: '8px 16px', backgroundColor: 'var(--bg-color)', borderBottom: '1px solid var(--border-color)', fontSize: '0.85rem', color: 'var(--text-secondary)', fontWeight: 'bold' }
 };
 
 export default Feed;

@@ -17,6 +17,7 @@ const ChatWindow = ({ conversation, messages, currentUser, onMessageSent, setMes
 
     const endRef = useRef(null);
     const fileInputRef = useRef(null);
+    const longPressTimer = useRef(null);
 
     const getMediaUrl = (path) => {
         if (!path) return null;
@@ -128,8 +129,41 @@ const ChatWindow = ({ conversation, messages, currentUser, onMessageSent, setMes
     };
 
     const handleContextMenu = (e, msgId) => {
-        e.preventDefault();
-        setContextMenu({ visible: true, x: e.pageX, y: e.pageY, msgId });
+        if (e && e.preventDefault) e.preventDefault();
+        
+        let x = 0, y = 0;
+        if (e.changedTouches && e.changedTouches.length > 0) {
+            x = e.changedTouches[0].pageX;
+            y = e.changedTouches[0].pageY;
+        } else {
+            x = e.pageX;
+            y = e.pageY;
+        }
+
+        // Adjust for screen edges on mobile
+        if (window.innerWidth < 768) {
+            if (x > window.innerWidth - 180) x = window.innerWidth - 180;
+        }
+
+        setContextMenu({ visible: true, x, y, msgId });
+    };
+
+    const handleTouchStart = (e, msgId) => {
+        const touch = e.touches[0];
+        const eventCopy = {
+            changedTouches: [{ pageX: touch.pageX, pageY: touch.pageY }],
+            preventDefault: () => e.preventDefault()
+        };
+        longPressTimer.current = setTimeout(() => {
+            handleContextMenu(eventCopy, msgId);
+        }, 600); // Long press duration
+    };
+
+    const handleTouchEnd = () => {
+        if (longPressTimer.current) {
+            clearTimeout(longPressTimer.current);
+            longPressTimer.current = null;
+        }
     };
 
     const handleAction = async (action) => {
@@ -211,6 +245,9 @@ const ChatWindow = ({ conversation, messages, currentUser, onMessageSent, setMes
                             key={idx}
                             style={{ ...styles.messageRow, justifyContent: isMe ? 'flex-end' : 'flex-start' }}
                             onContextMenu={(e) => handleContextMenu(e, msg.id)}
+                            onTouchStart={(e) => handleTouchStart(e, msg.id)}
+                            onTouchEnd={handleTouchEnd}
+                            onTouchMove={handleTouchEnd}
                         >
                             <div style={{
                                 ...styles.bubble,

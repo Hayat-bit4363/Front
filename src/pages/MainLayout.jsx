@@ -5,10 +5,21 @@ import { useAuth } from '../context/AuthContext';
 import { notificationSocket } from '../services/websocket';
 import { WS_BASE_URL } from '../config';
 
+// WebRTC STUN Turn server config
+const ICE_SERVERS = {
+    iceServers: [{ urls: 'stun:stun.l.google.com:19302' }]
+};
+
 const MainLayout = () => {
     const { user } = useAuth();
     const [incomingCall, setIncomingCall] = useState(null);
     const [activeCall, setActiveCall] = useState(null);
+    
+    // WebRTC Refs
+    const pcRef = React.useRef(null);
+    const localVideoRef = React.useRef(null);
+    const remoteVideoRef = React.useRef(null);
+    const localStreamRef = React.useRef(null);
 
     useEffect(() => {
         if (!user) return;
@@ -20,31 +31,35 @@ const MainLayout = () => {
         console.log(`MainLayout: Connecting to Notification WS for ${user.username}...`);
         notificationSocket.connect(`${WS_BASE_URL}/ws/notifications/${authUrl}`);
 
-        const handleCall = (data) => {
-            console.log("MainLayout: Received Signal:", data.signal, "from", data.sender);
+        const handleCall = async (data) => {
+            console.log("MainLayout: WebRTC Signal:", data.signal, "from", data.sender);
             
-            // Normalize IDs for comparison
             const currentUserId = String(user.id);
             const dataSenderId = String(data.sender_id);
             
             if (data.signal === 'init') {
                 if (dataSenderId !== currentUserId) {
-                    console.log("MainLayout: Showing Incoming Call Popup");
                     setIncomingCall(data);
                 }
             } else if (data.signal === 'rejected') {
-                console.log("MainLayout: Call Rejected by", data.sender);
                 setIncomingCall(null);
                 setActiveCall(null);
                 alert(`${data.sender} rejected the call`);
             } else if (data.signal === 'accepted') {
-                console.log("MainLayout: Call Accepted! Entering Active State");
                 setActiveCall(data);
                 setIncomingCall(null);
+                // Sender starts the RTC Offer
+                if (dataSenderId === currentUserId) {
+                    await startCallHandshake(data);
+                }
             } else if (data.signal === 'hangup') {
-                console.log("MainLayout: Call Ended (Hangup)");
-                setActiveCall(null);
-                setIncomingCall(null);
+                stopAllMedia();
+            } else if (data.signal === 'offer') {
+                handleOffer(data);
+            } else if (data.signal === 'answer') {
+                handleAnswer(data);
+            } else if (data.signal === 'candidate') {
+                handleCandidate(data);
             }
         };
 
@@ -56,36 +71,144 @@ const MainLayout = () => {
         };
     }, [user?.username]);
 
-    const acceptCall = () => {
-        const signalData = {
+    // --- WebRTC Logic ---
+    const startMedia = async (isCaller) => {
+        try {
+            const stream = await navigator.mediaDevices.getUserMedia({ 
+                audio: true, 
+                video: true // Always request both for now
+            });
+            localStreamRef.current = stream;
+            if (localVideoRef.current) localVideoRef.current.srcObject = stream;
+            return stream;
+        } catch (err) {
+            console.error("Media Error:", err);
+            return null;
+        }
+    };
+
+    const createPeerConnection = (targetId, conversationId) => {
+        const pc = new RTCPeerConnection(ICE_SERVERS);
+        
+        pc.onicecandidate = (event) => {
+            if (event.candidate) {
+                notificationSocket.send({
+                    type: 'call_signal',
+                    signal: 'candidate',
+                    candidate: event.candidate,
+                    target_user_id: targetId,
+                    conversation_id: conversationId,
+                    sender_id: user.id
+                });
+            }
+        };
+
+        pc.ontrack = (event) => {
+            console.log("WebRTC: Remote stream received");
+            if (remoteVideoRef.current) {
+                remoteVideoRef.current.srcObject = event.streams[0];
+            }
+        };
+
+        if (localStreamRef.current) {
+            localStreamRef.current.getTracks().forEach(track => {
+                pc.addTrack(track, localStreamRef.current);
+            });
+        }
+
+        pcRef.current = pc;
+        return pc;
+    };
+
+    const startCallHandshake = async (data) => {
+        const stream = await startMedia(true);
+        const targetId = String(data.sender_id) === String(user.id) ? String(data.target_user_id) : String(data.sender_id);
+        const pc = createPeerConnection(targetId, data.conversation_id);
+        
+        const offer = await pc.createOffer();
+        await pc.setLocalDescription(offer);
+        
+        notificationSocket.send({
+            type: 'call_signal',
+            signal: 'offer',
+            offer: offer,
+            target_user_id: targetId,
+            conversation_id: data.conversation_id,
+            sender_id: user.id
+        });
+    };
+
+    const handleOffer = async (data) => {
+        const pc = pcRef.current;
+        if (!pc) return;
+        
+        await pc.setRemoteDescription(new RTCSessionDescription(data.offer));
+        const answer = await pc.createAnswer();
+        await pc.setLocalDescription(answer);
+
+        notificationSocket.send({
+            type: 'call_signal',
+            signal: 'answer',
+            answer: answer,
+            target_user_id: data.sender_id,
+            conversation_id: data.conversation_id,
+            sender_id: user.id
+        });
+    };
+
+    const handleAnswer = async (data) => {
+        const pc = pcRef.current;
+        if (pc) {
+            await pc.setRemoteDescription(new RTCSessionDescription(data.answer));
+        }
+    };
+
+    const handleCandidate = async (data) => {
+        const pc = pcRef.current;
+        if (pc) {
+            await pc.addIceCandidate(new RTCIceCandidate(data.candidate));
+        }
+    };
+
+    const stopAllMedia = () => {
+        if (localStreamRef.current) {
+            localStreamRef.current.getTracks().forEach(track => track.stop());
+        }
+        if (pcRef.current) {
+            pcRef.current.close();
+            pcRef.current = null;
+        }
+        setActiveCall(null);
+        setIncomingCall(null);
+    };
+
+    const acceptCall = async () => {
+        await startMedia(false);
+        const targetId = String(incomingCall.sender_id);
+        createPeerConnection(targetId, incomingCall.conversation_id);
+
+        notificationSocket.send({
             type: 'call_signal',
             signal: 'accepted',
             sender: user.username,
             sender_id: String(user.id),
-            target_user_id: String(incomingCall.sender_id),
+            target_user_id: targetId,
             conversation_id: incomingCall.conversation_id
-        };
-        console.log("MainLayout: Sending Acceptance Signal:", signalData);
-        notificationSocket.send(signalData);
+        });
         setActiveCall(incomingCall);
         setIncomingCall(null);
     };
 
     const hangUp = () => {
-        if (!activeCall) return;
-        const currentId = String(user.id);
-        const targetId = String(activeCall.sender_id) === currentId ? String(activeCall.target_user_id) : String(activeCall.sender_id);
-        
-        const signal = {
+        const targetId = String(activeCall.sender_id) === String(user.id) ? String(activeCall.target_user_id) : String(activeCall.sender_id);
+        notificationSocket.send({
             type: 'call_signal',
             signal: 'hangup',
             sender: user.username,
             target_user_id: targetId,
             conversation_id: activeCall.conversation_id
-        };
-        console.log("MainLayout: Sending Hangup Signal:", signal);
-        notificationSocket.send(signal);
-        setActiveCall(null);
+        });
+        stopAllMedia();
     };
 
     const rejectCall = () => {
@@ -109,16 +232,22 @@ const MainLayout = () => {
             {/* Active Call Overlay */}
             {activeCall && (
                 <div style={styles.callOverlay}>
-                    <div style={styles.callCard} className="slide-up">
-                        <div style={{ ...styles.callAvatar, border: '4px solid #2ecc71' }}>
-                            {activeCall.sender === user.username ? activeCall.target_user_id.toString()[0] : activeCall.sender[0]?.toUpperCase()}
+                    <div style={{ ...styles.callCard, width: '90%', maxWidth: '900px', height: '80vh', display: 'flex', flexDirection: 'column' }}>
+                        <div style={styles.videoGrid}>
+                            <div style={styles.videoWrapper}>
+                                <video ref={remoteVideoRef} autoPlay playsInline style={styles.remoteVideo} />
+                                <div style={styles.videoLabel}>Remote</div>
+                            </div>
+                            <div style={styles.localVideoContainer}>
+                                <video ref={localVideoRef} autoPlay playsInline muted style={styles.localVideo} />
+                                <div style={styles.videoLabel}>Self</div>
+                            </div>
                         </div>
-                        <h3 style={{ margin: '10px 0', color: 'white' }}>In Call with {activeCall.sender === user.username ? 'Receiver' : activeCall.sender}</h3>
-                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', marginBottom: '20px' }}>
-                            <span className="pulse" style={{ color: '#2ecc71', fontSize: '1.5rem' }}>●</span>
-                            <span style={{ color: '#2ecc71', fontWeight: 'bold' }}>Connected</span>
+                        
+                        <div style={styles.callFooter}>
+                            <h3 style={{ color: 'white' }}>Talking with {activeCall.sender === user.username ? 'Receiver' : activeCall.sender}</h3>
+                            <button onClick={hangUp} style={{ ...styles.callBtn, backgroundColor: '#e74c3c', maxWidth: '200px' }}>Hang Up</button>
                         </div>
-                        <button onClick={hangUp} style={{ ...styles.callBtn, backgroundColor: '#e74c3c', width: '100%' }}>Hang Up</button>
                     </div>
                 </div>
             )}
@@ -194,7 +323,18 @@ const styles = {
         fontSize: '1rem',
         transition: 'transform 0.2s',
         flex: 1
-    }
+    },
+    videoGrid: { flex: 1, position: 'relative', overflow: 'hidden', borderRadius: '16px', backgroundColor: '#000', marginBottom: '20px', display: 'flex' },
+    videoWrapper: { flex: 1, position: 'relative' },
+    remoteVideo: { width: '100%', height: '100%', objectFit: 'cover' },
+    localVideoContainer: { 
+        position: 'absolute', bottom: '20px', right: '20px', width: '200px', height: '150px',
+        borderRadius: '12px', overflow: 'hidden', border: '2px solid rgba(255,255,255,0.2)',
+        boxShadow: '0 4px 12px rgba(0,0,0,0.5)', zIndex: 10
+    },
+    localVideo: { width: '100%', height: '100%', objectFit: 'cover' },
+    videoLabel: { position: 'absolute', top: '10px', left: '10px', color: '#fff', fontSize: '12px', backgroundColor: 'rgba(0,0,0,0.5)', padding: '2px 8px', borderRadius: '4px' },
+    callFooter: { height: '80px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0 20px', borderTop: '1px solid #333' }
 };
 
 export default MainLayout;

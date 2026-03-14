@@ -18,7 +18,7 @@ const ChatLayout = () => {
 
         // Connect Global Notifications
         notificationSocket.connect(`${WS_BASE_URL}/ws/notifications/`);
-        notificationSocket.on('notify', (data) => {
+        notificationSocket.on('message', (data) => {
             console.log("Notification:", data);
 
             // Handle Message Notification
@@ -46,7 +46,6 @@ const ChatLayout = () => {
                     });
                 }
             } else if (data.type === 'friend_request') {
-                // Handle Friend Request
                 const notif = {
                     id: Date.now(),
                     content: `New friend request from ${data.sender}`,
@@ -54,7 +53,6 @@ const ChatLayout = () => {
                     type: 'friend_request'
                 };
                 setNotifications(prev => [notif, ...prev]);
-                // Ideally trigger Sidebar refresh? 
             } else if (data.type === 'request_accepted') {
                 const notif = {
                     id: Date.now(),
@@ -80,11 +78,11 @@ const ChatLayout = () => {
             chatSocket.connect(`${WS_BASE_URL}/ws/chat/${selectedConvId}/`);
 
             chatSocket.on('chat_message', (data) => {
-                // Signal sends 'message' which is the serialized message object
-                // Support both formats if needed, but signal sends { type: 'chat_message', message: {...} }
-                // Consumer sends { type: 'chat_message', message: { ... } }
                 const msg = data.message;
-                setMessages(prev => [...prev, msg]);
+                setMessages(prev => {
+                    if (prev.find(m => m.id === msg.id)) return prev;
+                    return [...prev, msg];
+                });
 
                 // Update conversation preview
                 setConversations(prev => prev.map(c =>
@@ -151,7 +149,16 @@ const ChatLayout = () => {
                     conversation={selectedConversation}
                     messages={messages}
                     currentUser={user}
-                    onMessageSent={() => { }}
+                    onMessageSent={(newMsg) => {
+                        setMessages(prev => {
+                            if (prev.find(m => m.id === newMsg.id)) return prev;
+                            return [...prev, newMsg];
+                        });
+                        // Also update sidebar preview
+                        setConversations(prev => prev.map(c =>
+                            c.id === selectedConvId ? { ...c, last_message: newMsg } : c
+                        ));
+                    }}
                 />
             </div>
             <button onClick={logout} style={styles.logoutBtn} className="mobile-hide">Logout</button>

@@ -59,7 +59,7 @@ const VerifyEmailPage = () => {
             <div style={styles.formCard}>
                 <h2 style={styles.title}>Verify Email</h2>
                 <p style={{ textAlign: 'center', color: '#94a3b8', marginBottom: '1rem' }}>
-                    Please enter the code sent to your email (check console).
+                    Please enter the code sent to your email .
                 </p>
                 {msg && <p style={{ color: '#10b981', textAlign: 'center' }}>{msg}</p>}
                 {errorMsg && <p style={styles.error}>{errorMsg}</p>}

@@ -12,9 +12,21 @@ class WebSocketService {
         };
 
         this.socket.onmessage = (e) => {
-            const data = JSON.parse(e.data);
-            if (this.callbacks['message']) {
-                this.callbacks['message'](data);
+            try {
+                const data = JSON.parse(e.data);
+                const eventType = data.type || 'message';
+                
+                // Dispatch specific event type
+                if (this.callbacks[eventType]) {
+                    this.callbacks[eventType](data);
+                }
+                
+                // Also dispatch to a general 'message' listener if it exists
+                if (eventType !== 'message' && this.callbacks['message']) {
+                    this.callbacks['message'](data);
+                }
+            } catch (err) {
+                console.error("Error parsing WebSocket message:", err);
             }
         };
 

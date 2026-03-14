@@ -12,29 +12,18 @@ const ChatLayout = () => {
     const [selectedConvId, setSelectedConvId] = useState(null);
     const [messages, setMessages] = useState([]);
     const [notifications, setNotifications] = useState([]);
-    const [incomingCall, setIncomingCall] = useState(null);
 
     useEffect(() => {
-        fetchConversations();
+        if (!user) return;
 
         const token = localStorage.getItem('access_token');
         const authUrl = token ? `?token=${token}` : '';
 
         // Connect Global Notifications
         notificationSocket.connect(`${WS_BASE_URL}/ws/notifications/${authUrl}`);
-        notificationSocket.on('message', (data) => {
-            console.log("Notification:", data);
 
-            // Handle Global Call Signaling
-            if (data.type === 'call_signal') {
-                if (data.signal === 'init' && data.sender !== user.username) {
-                    setIncomingCall(data);
-                } else if (data.signal === 'rejected') {
-                    alert(`${data.sender} rejected the call`);
-                    setIncomingCall(null);
-                }
-                return;
-            }
+        notificationSocket.on('message', (data) => {
+            console.log("ChatLayout Notification received:", data);
 
             // Handle Message Notification
             if (data.type === 'notification' && data.notification) {
@@ -81,6 +70,12 @@ const ChatLayout = () => {
 
         return () => {
             notificationSocket.disconnect();
+        };
+    }, [user?.username]);
+
+    useEffect(() => {
+        fetchConversations();
+        return () => {
             chatSocket.disconnect();
         };
     }, []);
@@ -113,16 +108,6 @@ const ChatLayout = () => {
                     c.id === selectedConvId ? { ...c, last_message: msg } : c
                 ));
             });
-
-            chatSocket.on('call_signal', (data) => {
-                console.log("Call Signal:", data);
-                if (data.signal === 'init' && data.sender !== user.username) {
-                    setIncomingCall(data);
-                } else if (data.signal === 'rejected') {
-                    alert(`${data.sender} rejected the call`);
-                    setIncomingCall(null);
-                }
-            });
         }
     }, [selectedConvId]);
 
@@ -154,29 +139,6 @@ const ChatLayout = () => {
     };
 
     const selectedConversation = conversations.find(c => c.id === selectedConvId);
-
-    const acceptCall = () => {
-        alert("Joining call... (WebRTC implementation pending)");
-        notificationSocket.send({
-            type: 'call_signal',
-            signal: 'accepted',
-            sender: user.username,
-            target_user_id: incomingCall.sender_id,
-            conversation_id: incomingCall.conversation_id
-        });
-        setIncomingCall(null);
-    };
-
-    const rejectCall = () => {
-        notificationSocket.send({
-            type: 'call_signal',
-            signal: 'rejected',
-            sender: user.username,
-            target_user_id: incomingCall.sender_id,
-            conversation_id: incomingCall.conversation_id
-        });
-        setIncomingCall(null);
-    };
 
     return (
         <div style={styles.layout} className="chat-layout">
@@ -220,20 +182,6 @@ const ChatLayout = () => {
                 />
             </div>
             <button onClick={logout} style={styles.logoutBtn} className="mobile-hide">Logout</button>
-
-            {/* Incoming Call Overlay */}
-            {incomingCall && (
-                <div style={styles.callOverlay}>
-                    <div style={styles.callCard}>
-                        <h3>Incoming {incomingCall.call_type} Call</h3>
-                        <p>{incomingCall.sender} is calling you...</p>
-                        <div style={styles.callActions}>
-                            <button onClick={acceptCall} style={{ ...styles.callBtn, backgroundColor: '#22c55e' }}>Accept</button>
-                            <button onClick={rejectCall} style={{ ...styles.callBtn, backgroundColor: '#ef4444' }}>Reject</button>
-                        </div>
-                    </div>
-                </div>
-            )}
         </div>
     );
 };
@@ -257,19 +205,6 @@ const styles = {
         position: 'absolute', bottom: '1rem', left: '1rem',
         padding: '0.5rem 1rem', background: '#ef4444', color: 'white', border: 'none', borderRadius: '0.5rem', cursor: 'pointer',
         zIndex: 10
-    },
-    callOverlay: {
-        position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
-        backgroundColor: 'rgba(0,0,0,0.8)', display: 'flex', justifyContent: 'center', alignItems: 'center', zIndex: 1000
-    },
-    callCard: {
-        background: 'var(--bg-paper)', padding: '2rem', borderRadius: '1rem', textAlign: 'center', boxShadow: '0 10px 25px rgba(0,0,0,0.5)'
-    },
-    callActions: {
-        display: 'flex', gap: '1rem', marginTop: '1.5rem', justifyContent: 'center'
-    },
-    callBtn: {
-        padding: '0.8rem 1.5rem', border: 'none', borderRadius: '0.5rem', color: 'white', fontWeight: 'bold', cursor: 'pointer'
     }
 };
 

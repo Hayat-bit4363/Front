@@ -1,14 +1,16 @@
 class WebSocketService {
     constructor() {
         this.socket = null;
-        this.callbacks = {};
+        this.callbacks = {}; // event -> [callback1, callback2, ...]
     }
 
     connect(url) {
+        if (this.socket && this.socket.readyState === WebSocket.OPEN) return;
+        
         this.socket = new WebSocket(url);
 
         this.socket.onopen = () => {
-            console.log('WebSocket Connected');
+            console.log('WebSocket Connected to:', url);
         };
 
         this.socket.onmessage = (e) => {
@@ -16,14 +18,14 @@ class WebSocketService {
                 const data = JSON.parse(e.data);
                 const eventType = data.type || 'message';
                 
-                // Dispatch specific event type
+                // Dispatch to specific event listeners
                 if (this.callbacks[eventType]) {
-                    this.callbacks[eventType](data);
+                    this.callbacks[eventType].forEach(cb => cb(data));
                 }
                 
-                // Also dispatch to a general 'message' listener if it exists
+                // Also dispatch to a general 'message' listener
                 if (eventType !== 'message' && this.callbacks['message']) {
-                    this.callbacks['message'](data);
+                    this.callbacks['message'].forEach(cb => cb(data));
                 }
             } catch (err) {
                 console.error("Error parsing WebSocket message:", err);
@@ -32,23 +34,34 @@ class WebSocketService {
 
         this.socket.onclose = () => {
             console.log('WebSocket Disconnected');
-            // Reconnect logic could go here
         };
     }
 
     send(data) {
         if (this.socket && this.socket.readyState === WebSocket.OPEN) {
+            console.log("WebSocket Sending:", data);
             this.socket.send(JSON.stringify(data));
+        } else {
+            console.error("WebSocket Send Failed: Socket not connected", { socket: !!this.socket, readyState: this.socket?.readyState });
         }
     }
 
     on(event, callback) {
-        this.callbacks[event] = callback;
+        if (!this.callbacks[event]) {
+            this.callbacks[event] = [];
+        }
+        this.callbacks[event].push(callback);
+    }
+
+    off(event, callback) {
+        if (!this.callbacks[event]) return;
+        this.callbacks[event] = this.callbacks[event].filter(cb => cb !== callback);
     }
 
     disconnect() {
         if (this.socket) {
             this.socket.close();
+            this.socket = null;
         }
     }
 }

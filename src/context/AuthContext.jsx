@@ -18,7 +18,7 @@ export const AuthProvider = ({ children }) => {
                 setUser({
                     username: decoded.username,
                     email: decoded.email,
-                    user_id: decoded.user_id,
+                    id: decoded.user_id, // Map user_id from token to id
                     avatar: decoded.avatar
                 });
             } catch (e) {
@@ -39,7 +39,7 @@ export const AuthProvider = ({ children }) => {
         setUser({
             username: decoded.username,
             email: decoded.email,
-            user_id: decoded.user_id,
+            id: decoded.user_id,
             avatar: decoded.avatar
         });
         return response.data;

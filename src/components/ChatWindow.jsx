@@ -1,9 +1,8 @@
-import React, { useState, useEffect, useRef } from 'react';
 import api from '../services/api';
-import { chatSocket } from '../services/websocket';
+import { chatSocket, notificationSocket } from '../services/websocket';
 import { BASE_URL } from '../config';
 
-const ChatWindow = ({ conversation, messages, currentUser, onMessageSent }) => {
+const ChatWindow = ({ conversation, messages, currentUser, onMessageSent, setMessages }) => {
     const [text, setText] = useState('');
     const [image, setImage] = useState(null);
     const [audioBlob, setAudioBlob] = useState(null);
@@ -21,7 +20,11 @@ const ChatWindow = ({ conversation, messages, currentUser, onMessageSent }) => {
     const getMediaUrl = (path) => {
         if (!path) return null;
         if (path.startsWith('http')) return path;
-        return `${BASE_URL.replace(/\/$/, '')}${path}`;
+        const cleanBase = BASE_URL.replace(/\/$/, '');
+        const cleanPath = path.startsWith('/') ? path : `/${path}`;
+        const finalUrl = `${cleanBase}${cleanPath}`;
+        console.log("Media URL debug:", { original: path, final: finalUrl });
+        return finalUrl;
     };
 
     useEffect(() => {
@@ -93,15 +96,23 @@ const ChatWindow = ({ conversation, messages, currentUser, onMessageSent }) => {
     };
 
     const initiateCall = (type) => {
-        if (!conversation) return;
+        if (!conversation || !other.id) {
+            console.error("Cannot initiate call: missing conversation or target user ID", { conversation, other });
+            return;
+        }
         
-        chatSocket.send({
+        const signalData = {
             type: 'call_signal',
             signal: 'init',
             call_type: type,
             sender: currentUser.username,
+            sender_id: currentUser.id,
+            target_user_id: other.id,
             conversation_id: conversation.id
-        });
+        };
+
+        console.log("Sending call signal:", signalData);
+        notificationSocket.send(signalData);
         
         alert(`Initiating ${type} call to ${name}... (Wait for receiver)`);
     };
@@ -112,18 +123,27 @@ const ChatWindow = ({ conversation, messages, currentUser, onMessageSent }) => {
     };
 
     const handleAction = async (action) => {
-        // Star, Delete, Edit logic
+        const msgId = contextMenu.msgId;
+        setContextMenu({ ...contextMenu, visible: false });
+        
+        // Optimistic Delete
+        if (action === 'delete_me' || action === 'delete_everyone') {
+            setMessages(prev => prev.filter(m => m.id !== msgId));
+        }
+
         try {
             if (action === 'delete_me') {
-                await api.delete(`chat/messages/${contextMenu.msgId}/action/?type=me`);
+                await api.delete(`chat/messages/${msgId}/action/?type=me`);
             } else if (action === 'delete_everyone') {
-                await api.delete(`chat/messages/${contextMenu.msgId}/action/?type=everyone`);
+                await api.delete(`chat/messages/${msgId}/action/?type=everyone`);
             } else if (action === 'star') {
-                await api.post(`chat/messages/${contextMenu.msgId}/star/`);
+                await api.post(`chat/messages/${msgId}/star/`);
             }
-            // Trigger refresh or update message list locally
-            setContextMenu({ ...contextMenu, visible: false });
-        } catch (e) { console.error(e); }
+        } catch (e) { 
+            console.error(e);
+            // Revert on error? (Optional for simplified UX)
+            alert("Action failed. Please refresh.");
+        }
     };
 
     // Close menu on click
@@ -195,7 +215,12 @@ const ChatWindow = ({ conversation, messages, currentUser, onMessageSent }) => {
                                 )}
                                 {msg.audio && (
                                     <div style={{ margin: '8px 0' }}>
-                                        <audio controls src={getMediaUrl(msg.audio)} style={{ maxWidth: '100%', height: '35px' }} />
+                                        <audio 
+                                            controls 
+                                            src={getMediaUrl(msg.audio)} 
+                                            style={{ maxWidth: '100%', height: '35px' }} 
+                                            preload="metadata"
+                                        />
                                     </div>
                                 )}
                                 {msg.text && <div style={styles.msgText}>{msg.text}</div>}

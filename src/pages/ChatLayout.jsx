@@ -22,6 +22,17 @@ const ChatLayout = () => {
         notificationSocket.on('message', (data) => {
             console.log("Notification:", data);
 
+            // Handle Global Call Signaling
+            if (data.type === 'call_signal') {
+                if (data.signal === 'init' && data.sender !== user.username) {
+                    setIncomingCall(data);
+                } else if (data.signal === 'rejected') {
+                    alert(`${data.sender} rejected the call`);
+                    setIncomingCall(null);
+                }
+                return;
+            }
+
             // Handle Message Notification
             if (data.type === 'notification' && data.notification) {
                 setNotifications(prev => [data.notification, ...prev]);
@@ -80,6 +91,12 @@ const ChatLayout = () => {
 
             chatSocket.on('chat_message', (data) => {
                 const msg = data.message;
+                
+                if (msg.type === 'message_deleted') {
+                    setMessages(prev => prev.filter(m => m.id !== msg.id));
+                    return;
+                }
+
                 setMessages(prev => {
                     if (prev.find(m => m.id === msg.id)) return prev;
                     return [...prev, msg];
@@ -134,21 +151,22 @@ const ChatLayout = () => {
 
     const acceptCall = () => {
         alert("Joining call... (WebRTC implementation pending)");
-        // In a real app, you'd navigate to a call page or open a modal with video/audio
-        chatSocket.send({
+        notificationSocket.send({
             type: 'call_signal',
             signal: 'accepted',
             sender: user.username,
+            target_user_id: incomingCall.sender_id,
             conversation_id: incomingCall.conversation_id
         });
         setIncomingCall(null);
     };
 
     const rejectCall = () => {
-        chatSocket.send({
+        notificationSocket.send({
             type: 'call_signal',
             signal: 'rejected',
             sender: user.username,
+            target_user_id: incomingCall.sender_id,
             conversation_id: incomingCall.conversation_id
         });
         setIncomingCall(null);
@@ -181,6 +199,7 @@ const ChatLayout = () => {
                 <ChatWindow
                     conversation={selectedConversation}
                     messages={messages}
+                    setMessages={setMessages}
                     currentUser={user}
                     onMessageSent={(newMsg) => {
                         setMessages(prev => {

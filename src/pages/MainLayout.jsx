@@ -8,6 +8,7 @@ import { WS_BASE_URL } from '../config';
 const MainLayout = () => {
     const { user } = useAuth();
     const [incomingCall, setIncomingCall] = useState(null);
+    const [activeCall, setActiveCall] = useState(null);
 
     useEffect(() => {
         if (!user) return;
@@ -21,13 +22,18 @@ const MainLayout = () => {
 
         const handleCall = (data) => {
             console.log("MainLayout: Call Signal Received!", data);
+            
             if (data.signal === 'init' && data.sender !== user.username) {
                 setIncomingCall(data);
             } else if (data.signal === 'rejected') {
                 alert(`${data.sender} rejected the call`);
                 setIncomingCall(null);
             } else if (data.signal === 'accepted') {
-                alert(`${data.sender} accepted your call! (Establishing connection...)`);
+                setActiveCall(data);
+                setIncomingCall(null);
+            } else if (data.signal === 'hangup') {
+                setActiveCall(null);
+                setIncomingCall(null);
             }
         };
 
@@ -40,15 +46,29 @@ const MainLayout = () => {
     }, [user?.username]);
 
     const acceptCall = () => {
-        alert("Joining call... (WebRTC implementation pending)");
-        notificationSocket.send({
+        const signalData = {
             type: 'call_signal',
             signal: 'accepted',
             sender: user.username,
+            sender_id: user.id,
             target_user_id: incomingCall.sender_id,
             conversation_id: incomingCall.conversation_id
-        });
+        };
+        notificationSocket.send(signalData);
+        setActiveCall(incomingCall);
         setIncomingCall(null);
+    };
+
+    const hangUp = () => {
+        const targetId = activeCall.sender_id === user.id ? activeCall.target_user_id : activeCall.sender_id;
+        notificationSocket.send({
+            type: 'call_signal',
+            signal: 'hangup',
+            sender: user.username,
+            target_user_id: targetId,
+            conversation_id: activeCall.conversation_id
+        });
+        setActiveCall(null);
     };
 
     const rejectCall = () => {
@@ -69,7 +89,24 @@ const MainLayout = () => {
                 <Outlet />
             </div>
 
-            {/* Global Call Overlay */}
+            {/* Active Call Overlay */}
+            {activeCall && (
+                <div style={styles.callOverlay}>
+                    <div style={styles.callCard} className="slide-up">
+                        <div style={{ ...styles.callAvatar, border: '4px solid #2ecc71' }}>
+                            {activeCall.sender === user.username ? activeCall.target_user_id.toString()[0] : activeCall.sender[0]?.toUpperCase()}
+                        </div>
+                        <h3 style={{ margin: '10px 0', color: 'white' }}>In Call with {activeCall.sender === user.username ? 'Receiver' : activeCall.sender}</h3>
+                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', marginBottom: '20px' }}>
+                            <span className="pulse" style={{ color: '#2ecc71', fontSize: '1.5rem' }}>●</span>
+                            <span style={{ color: '#2ecc71', fontWeight: 'bold' }}>Connected</span>
+                        </div>
+                        <button onClick={hangUp} style={{ ...styles.callBtn, backgroundColor: '#e74c3c', width: '100%' }}>Hang Up</button>
+                    </div>
+                </div>
+            )}
+
+            {/* Incoming Call Overlay */}
             {incomingCall && (
                 <div style={styles.callOverlay}>
                     <div style={styles.callCard} className="slide-up">

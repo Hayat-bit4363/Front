@@ -268,13 +268,21 @@ const ChatWindow = ({ conversation, messages, currentUser, onMessageSent, setMes
 
                 {selectedFile && (
                     <div style={styles.preview}>
-                        {selectedFile.type.startsWith('image/') ? '📷' : '🎥'} {selectedFile.name} 
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flex: 1, overflow: 'hidden' }}>
+                            <span>{selectedFile.type.startsWith('image/') ? '📷' : '🎥'}</span>
+                            <span style={styles.truncateText}>{selectedFile.name}</span>
+                        </div>
                         <button type="button" onClick={() => setSelectedFile(null)} style={styles.clearBtn}>✕</button>
                     </div>
                 )}
 
                 {audioBlob ? (
-                    <div style={styles.preview}>Audio Recorded <button onClick={() => setAudioBlob(null)}>x</button> <button onClick={handleSend}>Send</button></div>
+                    <div style={styles.preview}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flex: 1 }}>
+                            <span>🎤 Voice Note recorded</span>
+                        </div>
+                        <button type="button" onClick={() => setAudioBlob(null)} style={styles.clearBtn}>✕</button>
+                    </div>
                 ) : (
                     <>
                         {isRecording ? (
@@ -337,11 +345,17 @@ const styles = {
     },
     input: {
         flex: 1, padding: '12px 16px', borderRadius: '24px', border: 'none',
-        backgroundColor: 'var(--input-bg)', fontSize: '15px', outline: 'none', color: 'var(--text-primary)'
+        backgroundColor: 'var(--input-bg)', fontSize: '15px', outline: 'none', color: 'var(--text-primary)', minWidth: 0
     },
-    iconBtn: { background: 'none', border: 'none', fontSize: '1.4rem', cursor: 'pointer', color: 'var(--text-secondary)', transition: 'color 0.2s' },
-    sendBtn: { background: 'none', border: 'none', fontSize: '1.6rem', cursor: 'pointer', transition: 'transform 0.1s' },
-    preview: { fontSize: '0.8rem', padding: '5px', backgroundColor: 'var(--input-bg)', borderRadius: '5px', display: 'flex', gap: '10px', alignItems: 'center' },
+    iconBtn: { background: 'none', border: 'none', fontSize: '1.4rem', cursor: 'pointer', color: 'var(--text-secondary)', transition: 'color 0.2s', flexShrink: 0 },
+    sendBtn: { 
+        backgroundColor: 'var(--primary-color)', color: '#fff', width: '40px', height: '40px', borderRadius: '50%',
+        border: 'none', fontSize: '1.2rem', cursor: 'pointer', transition: 'transform 0.1s', flexShrink: 0,
+        display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: '0 1px 3px rgba(0,0,0,0.2)'
+    },
+    preview: { fontSize: '0.8rem', padding: '8px 12px', backgroundColor: 'var(--input-bg)', borderRadius: '12px', display: 'flex', gap: '10px', alignItems: 'center', marginBottom: '5px' },
+    truncateText: { overflow: 'hidden', whiteSpace: 'nowrap', textOverflow: 'ellipsis', flex: 1, maxWidth: '180px' },
+    clearBtn: { background: 'none', border: 'none', color: '#667781', cursor: 'pointer', fontSize: '1.2rem', padding: '0 5px' },
     contextMenu: {
         position: 'fixed', backgroundColor: 'var(--bg-paper)', boxShadow: '0 4px 12px rgba(0,0,0,0.15)',
         borderRadius: '8px', padding: '5px 0', zIndex: 1000, color: 'var(--text-primary)'

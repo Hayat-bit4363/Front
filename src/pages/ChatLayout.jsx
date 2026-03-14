@@ -17,8 +17,11 @@ const ChatLayout = () => {
     useEffect(() => {
         fetchConversations();
 
+        const token = localStorage.getItem('access_token');
+        const authUrl = token ? `?token=${token}` : '';
+
         // Connect Global Notifications
-        notificationSocket.connect(`${WS_BASE_URL}/ws/notifications/`);
+        notificationSocket.connect(`${WS_BASE_URL}/ws/notifications/${authUrl}`);
         notificationSocket.on('message', (data) => {
             console.log("Notification:", data);
 
@@ -86,8 +89,11 @@ const ChatLayout = () => {
         if (selectedConvId) {
             fetchMessages(selectedConvId);
 
+            const token = localStorage.getItem('access_token');
+            const authUrl = token ? `?token=${token}` : '';
+
             chatSocket.disconnect();
-            chatSocket.connect(`${WS_BASE_URL}/ws/chat/${selectedConvId}/`);
+            chatSocket.connect(`${WS_BASE_URL}/ws/chat/${selectedConvId}/${authUrl}`);
 
             chatSocket.on('chat_message', (data) => {
                 const msg = data.message;

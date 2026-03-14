@@ -36,9 +36,18 @@ const ChatWindow = ({ conversation, messages, currentUser, onMessageSent, setMes
         try {
             const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
             
-            // Check for supported types
-            const mimeTypes = ['audio/webm', 'audio/mp4', 'audio/ogg', 'audio/wav'];
+            // Comprehensive MIME type check for cross-browser recording (Safari likes mp4/aac, Chrome likes webm)
+            const mimeTypes = [
+                'audio/webm;codecs=opus',
+                'audio/webm',
+                'audio/mp4',
+                'audio/mp4;codecs=mp4a.40.2',
+                'audio/aac',
+                'audio/ogg;codecs=opus',
+                'audio/wav'
+            ];
             const supportedType = mimeTypes.find(type => MediaRecorder.isTypeSupported(type));
+            console.log("Using MIME type for recording:", supportedType);
             
             mediaRecorderRef.current = new MediaRecorder(stream, { mimeType: supportedType });
 

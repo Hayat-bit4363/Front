@@ -13,11 +13,17 @@ body {
   font-family: 'Segoe UI', 'Roboto', 'Helvetica', 'Arial', sans-serif;
   background-color: var(--bg-color);
   color: var(--text-primary);
+  -webkit-transition: background-color 0.3s ease, color 0.3s ease;
   transition: background-color 0.3s ease, color 0.3s ease;
 }
 
 /* Animations */
 @keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@-webkit-keyframes fadeIn {
   from { opacity: 0; }
   to { opacity: 1; }
 }
@@ -37,14 +43,14 @@ body {
 ::-webkit-scrollbar-thumb:hover { background: #a0a4a8; }
 
 /* Mobile Utilities */
-.mobile-hide {
-  @media (max-width: 768px) {
+@media (max-width: 768px) {
+  .mobile-hide {
     display: none !important;
   }
 }
 
-.mobile-full {
-  @media (max-width: 768px) {
+@media (max-width: 768px) {
+  .mobile-full {
     width: 100% !important;
     max-width: 100% !important;
     border: none !important;

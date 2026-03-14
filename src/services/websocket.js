@@ -5,6 +5,7 @@ class WebSocketService {
         this.url = null;
         this.reconnectTimeout = null;
         this.manualDisconnect = false;
+        this.messageQueue = []; // Queue messages while connecting
     }
 
     connect(url) {
@@ -26,6 +27,12 @@ class WebSocketService {
             if (this.reconnectTimeout) {
                 clearTimeout(this.reconnectTimeout);
                 this.reconnectTimeout = null;
+            }
+            // Flush queue
+            while (this.messageQueue.length > 0) {
+                const queuedMsg = this.messageQueue.shift();
+                console.log("[WS]: Flushing queued message", queuedMsg.type || 'unknown');
+                this.socket.send(JSON.stringify(queuedMsg));
             }
         };
 
@@ -64,8 +71,13 @@ class WebSocketService {
     send(data) {
         if (this.socket && this.socket.readyState === WebSocket.OPEN) {
             this.socket.send(JSON.stringify(data));
+        } else if (this.socket && this.socket.readyState === WebSocket.CONNECTING) {
+            console.warn("[WS]: Socket is connecting. Queuing message...");
+            this.messageQueue.push(data);
         } else {
             console.error("[WS ERROR]: Send Failed. Socket state:", this.socket?.readyState);
+            // Try to reconnect if it's dead
+            if (!this.manualDisconnect) this._connect();
         }
     }
 

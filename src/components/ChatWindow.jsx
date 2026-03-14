@@ -1,5 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import api from '../services/api';
+import { chatSocket } from '../services/websocket';
+import { BASE_URL } from '../config';
 
 const ChatWindow = ({ conversation, messages, currentUser, onMessageSent }) => {
     const [text, setText] = useState('');
@@ -11,9 +13,16 @@ const ChatWindow = ({ conversation, messages, currentUser, onMessageSent }) => {
     // Media Recorder Ref
     const mediaRecorderRef = useRef(null);
     const audioChunksRef = useRef([]);
+    const [audioExt, setAudioExt] = useState('webm');
 
     const endRef = useRef(null);
     const fileInputRef = useRef(null);
+
+    const getMediaUrl = (path) => {
+        if (!path) return null;
+        if (path.startsWith('http')) return path;
+        return `${BASE_URL.replace(/\/$/, '')}${path}`;
+    };
 
     useEffect(() => {
         endRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -22,7 +31,12 @@ const ChatWindow = ({ conversation, messages, currentUser, onMessageSent }) => {
     const startRecording = async () => {
         try {
             const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-            mediaRecorderRef.current = new MediaRecorder(stream);
+            
+            // Check for supported types
+            const mimeTypes = ['audio/webm', 'audio/mp4', 'audio/ogg', 'audio/wav'];
+            const supportedType = mimeTypes.find(type => MediaRecorder.isTypeSupported(type));
+            
+            mediaRecorderRef.current = new MediaRecorder(stream, { mimeType: supportedType });
 
             mediaRecorderRef.current.ondataavailable = (event) => {
                 if (event.data.size > 0) {
@@ -31,7 +45,9 @@ const ChatWindow = ({ conversation, messages, currentUser, onMessageSent }) => {
             };
 
             mediaRecorderRef.current.onstop = () => {
-                const blob = new Blob(audioChunksRef.current, { type: 'audio/webm' });
+                const extension = supportedType.split('/')[1]?.split(';')[0] || 'webm';
+                setAudioExt(extension);
+                const blob = new Blob(audioChunksRef.current, { type: supportedType });
                 setAudioBlob(blob);
                 audioChunksRef.current = [];
             };
@@ -40,6 +56,7 @@ const ChatWindow = ({ conversation, messages, currentUser, onMessageSent }) => {
             setIsRecording(true);
         } catch (err) {
             console.error("Error accessing microphone:", err);
+            alert("Could not access microphone. Please check permissions.");
         }
     };
 
@@ -60,7 +77,7 @@ const ChatWindow = ({ conversation, messages, currentUser, onMessageSent }) => {
         formData.append('conversation', conversation.id);
         if (text) formData.append('text', text);
         if (image) formData.append('image', image);
-        if (audioBlob) formData.append('audio', audioBlob, 'voice_note.webm');
+        if (audioBlob) formData.append('audio', audioBlob, `voice_note.${audioExt}`);
 
         try {
             const res = await api.post('chat/messages/', formData, {
@@ -73,6 +90,20 @@ const ChatWindow = ({ conversation, messages, currentUser, onMessageSent }) => {
         } catch (err) {
             console.error("Send failed", err);
         }
+    };
+
+    const initiateCall = (type) => {
+        if (!conversation) return;
+        
+        chatSocket.send({
+            type: 'call_signal',
+            signal: 'init',
+            call_type: type,
+            sender: currentUser.username,
+            conversation_id: conversation.id
+        });
+        
+        alert(`Initiating ${type} call to ${name}... (Wait for receiver)`);
     };
 
     const handleContextMenu = (e, msgId) => {
@@ -128,7 +159,7 @@ const ChatWindow = ({ conversation, messages, currentUser, onMessageSent }) => {
             <div style={styles.header}>
                 <div style={styles.userInfo}>
                     <div style={styles.avatar}>
-                        {other.avatar ? <img src={other.avatar} style={styles.avatarImg} /> : name[0]?.toUpperCase()}
+                        {other.avatar ? <img src={getMediaUrl(other.avatar)} style={styles.avatarImg} /> : name[0]?.toUpperCase()}
                     </div>
                     <div>
                         <h3 style={styles.headerName}>{name}</h3>
@@ -136,8 +167,8 @@ const ChatWindow = ({ conversation, messages, currentUser, onMessageSent }) => {
                     </div>
                 </div>
                 <div style={styles.headerActions}>
-                    <button style={styles.iconBtn}>📞</button>
-                    <button style={styles.iconBtn}>📹</button>
+                    <button style={styles.iconBtn} onClick={() => initiateCall('voice')}>📞</button>
+                    <button style={styles.iconBtn} onClick={() => initiateCall('video')}>📹</button>
                     <button style={styles.iconBtn}>🔍</button>
                 </div>
             </div>
@@ -159,11 +190,13 @@ const ChatWindow = ({ conversation, messages, currentUser, onMessageSent }) => {
                             }}>
                                 {msg.image && (
                                     <div style={styles.msgImageContainer}>
-                                        <img src={msg.image} style={styles.msgImage} alt="sent" />
+                                        <img src={getMediaUrl(msg.image)} style={styles.msgImage} alt="sent" />
                                     </div>
                                 )}
                                 {msg.audio && (
-                                    <audio controls src={msg.audio} style={{ maxWidth: '200px' }} />
+                                    <div style={{ margin: '8px 0' }}>
+                                        <audio controls src={getMediaUrl(msg.audio)} style={{ maxWidth: '100%', height: '35px' }} />
+                                    </div>
                                 )}
                                 {msg.text && <div style={styles.msgText}>{msg.text}</div>}
 

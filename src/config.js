@@ -15,3 +15,4 @@ const getWsUrl = () => {
 
 export const API_BASE_URL = getBaseUrl();
 export const WS_BASE_URL = getWsUrl();
+export const BASE_URL = API_BASE_URL.replace('/api/', '/');

@@ -2,12 +2,19 @@ import React, { useState } from 'react';
 import api from '../services/api';
 
 import PeoplePage from '../pages/PeoplePage';
+import { BASE_URL } from '../config';
 
 const Sidebar = ({ conversations, selectConversation, selectedConversationId, currentUser, onNewConversation }) => {
     const [activeTab, setActiveTab] = useState('chats'); // chats, status, calls, settings
     const [searchTerm, setSearchTerm] = useState('');
     const [searchResults, setSearchResults] = useState([]);
     const [showSearch, setShowSearch] = useState(false);
+
+    const getMediaUrl = (path) => {
+        if (!path) return null;
+        if (path.startsWith('http')) return path;
+        return `${BASE_URL.replace(/\/$/, '')}${path}`;
+    };
 
     const handleSearch = async (e) => {
         setSearchTerm(e.target.value);
@@ -39,7 +46,7 @@ const Sidebar = ({ conversations, selectConversation, selectedConversationId, cu
             {/* Header / Nav */}
             <div style={styles.header}>
                 <div style={styles.avatar}>
-                    {currentUser?.avatar ? <img src={currentUser.avatar} style={styles.avatarImg} /> : currentUser?.username[0].toUpperCase()}
+                    {currentUser?.avatar ? <img src={getMediaUrl(currentUser.avatar)} style={styles.avatarImg} /> : currentUser?.username[0].toUpperCase()}
                 </div>
                 <div style={styles.navIcons}>
                     <button onClick={() => setActiveTab('chats')} style={{ ...styles.iconBtn, color: activeTab === 'chats' ? 'var(--primary-color)' : '#54656f' }} title="Chats">💬</button>
@@ -71,7 +78,7 @@ const Sidebar = ({ conversations, selectConversation, selectedConversationId, cu
                             searchResults.map(user => (
                                 <div key={user.id} style={styles.item} onClick={() => startChat(user.id)}>
                                     <div style={styles.avatar}>
-                                        {user.avatar ? <img src={user.avatar} style={styles.avatarImg} /> : user.username[0].toUpperCase()}
+                                        {user.avatar ? <img src={getMediaUrl(user.avatar)} style={styles.avatarImg} /> : user.username[0].toUpperCase()}
                                     </div>
                                     <div style={styles.info}>
                                         <div style={styles.name}>{user.username}</div>
@@ -92,7 +99,7 @@ const Sidebar = ({ conversations, selectConversation, selectedConversationId, cu
                                         onClick={() => selectConversation(conv.id)}
                                     >
                                         <div style={styles.avatar}>
-                                            {other.avatar ? <img src={other.avatar} style={styles.avatarImg} /> : name[0]?.toUpperCase()}
+                                            {other.avatar ? <img src={getMediaUrl(other.avatar)} style={styles.avatarImg} /> : name[0]?.toUpperCase()}
                                         </div>
                                         <div style={styles.info}>
                                             <div style={styles.topRow}>

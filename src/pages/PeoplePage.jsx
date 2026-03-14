@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import api from '../services/api';
 import { useAuth } from '../context/AuthContext';
+import { BASE_URL } from '../config';
 
 const PeoplePage = () => {
     const [activeTab, setActiveTab] = useState('discover');
@@ -8,6 +9,12 @@ const PeoplePage = () => {
     const [requests, setRequests] = useState([]);
     const [loading, setLoading] = useState(false);
     const { user } = useAuth(); // for context if needed
+
+    const getMediaUrl = (path) => {
+        if (!path) return null;
+        if (path.startsWith('http')) return path;
+        return `${BASE_URL.replace(/\/$/, '')}${path}`;
+    };
 
     useEffect(() => {
         if (activeTab === 'discover') fetchPeople();
@@ -87,7 +94,7 @@ const PeoplePage = () => {
                     <div style={styles.grid}>
                         {people.map(person => (
                             <div key={person.id} style={styles.card}>
-                                <img src={person.avatar || 'https://via.placeholder.com/100'} style={styles.avatar} />
+                                <img src={person.avatar ? getMediaUrl(person.avatar) : 'https://via.placeholder.com/100'} style={styles.avatar} />
                                 <div style={styles.info}>
                                     <h4 style={styles.name}>{person.username}</h4>
                                     <p style={styles.bio}>{person.about || 'No bio'}</p>
@@ -107,7 +114,7 @@ const PeoplePage = () => {
                         {requests.map(req => (
                             <div key={req.id} style={styles.requestRow}>
                                 <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                                    <img src={req.sender.avatar || 'https://via.placeholder.com/50'} style={{ width: '40px', height: '40px', borderRadius: '50%' }} />
+                                    <img src={req.sender.avatar ? getMediaUrl(req.sender.avatar) : 'https://via.placeholder.com/50'} style={{ width: '40px', height: '40px', borderRadius: '50%' }} />
                                     <div>
                                         <b style={{ color: 'var(--text-primary)' }}>{req.sender.username}</b>
                                         <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>sent you a request</div>
@@ -126,7 +133,7 @@ const PeoplePage = () => {
                     <div style={styles.grid}>
                         {people.map(person => (
                             <div key={person.id} style={styles.card}>
-                                <img src={person.avatar || 'https://via.placeholder.com/100'} style={styles.avatar} />
+                                <img src={person.avatar ? getMediaUrl(person.avatar) : 'https://via.placeholder.com/100'} style={styles.avatar} />
                                 <div style={styles.info}>
                                     <h4 style={styles.name}>{person.username}</h4>
                                 </div>

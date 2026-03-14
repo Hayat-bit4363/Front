@@ -116,8 +116,8 @@ const ChatWindow = ({ conversation, messages, currentUser, onMessageSent, setMes
             signal: 'init',
             call_type: type,
             sender: currentUser.username,
-            sender_id: currentUser.id,
-            target_user_id: other.id,
+            sender_id: Number(currentUser.id),
+            target_user_id: Number(other.id),
             conversation_id: conversation.id
         };
 

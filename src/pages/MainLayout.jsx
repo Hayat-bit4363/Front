@@ -21,17 +21,28 @@ const MainLayout = () => {
         notificationSocket.connect(`${WS_BASE_URL}/ws/notifications/${authUrl}`);
 
         const handleCall = (data) => {
-            console.log("MainLayout: Call Signal Received!", data);
+            console.log("MainLayout: Received Signal:", data.signal, "from", data.sender);
             
-            if (data.signal === 'init' && data.sender !== user.username) {
-                setIncomingCall(data);
+            // Normalize IDs for comparison
+            const currentUserId = String(user.id);
+            const dataSenderId = String(data.sender_id);
+            
+            if (data.signal === 'init') {
+                if (dataSenderId !== currentUserId) {
+                    console.log("MainLayout: Showing Incoming Call Popup");
+                    setIncomingCall(data);
+                }
             } else if (data.signal === 'rejected') {
-                alert(`${data.sender} rejected the call`);
+                console.log("MainLayout: Call Rejected by", data.sender);
                 setIncomingCall(null);
+                setActiveCall(null);
+                alert(`${data.sender} rejected the call`);
             } else if (data.signal === 'accepted') {
+                console.log("MainLayout: Call Accepted! Entering Active State");
                 setActiveCall(data);
                 setIncomingCall(null);
             } else if (data.signal === 'hangup') {
+                console.log("MainLayout: Call Ended (Hangup)");
                 setActiveCall(null);
                 setIncomingCall(null);
             }
@@ -50,24 +61,30 @@ const MainLayout = () => {
             type: 'call_signal',
             signal: 'accepted',
             sender: user.username,
-            sender_id: user.id,
-            target_user_id: incomingCall.sender_id,
+            sender_id: String(user.id),
+            target_user_id: String(incomingCall.sender_id),
             conversation_id: incomingCall.conversation_id
         };
+        console.log("MainLayout: Sending Acceptance Signal:", signalData);
         notificationSocket.send(signalData);
         setActiveCall(incomingCall);
         setIncomingCall(null);
     };
 
     const hangUp = () => {
-        const targetId = activeCall.sender_id === user.id ? activeCall.target_user_id : activeCall.sender_id;
-        notificationSocket.send({
+        if (!activeCall) return;
+        const currentId = String(user.id);
+        const targetId = String(activeCall.sender_id) === currentId ? String(activeCall.target_user_id) : String(activeCall.sender_id);
+        
+        const signal = {
             type: 'call_signal',
             signal: 'hangup',
             sender: user.username,
             target_user_id: targetId,
             conversation_id: activeCall.conversation_id
-        });
+        };
+        console.log("MainLayout: Sending Hangup Signal:", signal);
+        notificationSocket.send(signal);
         setActiveCall(null);
     };
 

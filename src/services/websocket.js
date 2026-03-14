@@ -1,45 +1,68 @@
 class WebSocketService {
     constructor() {
         this.socket = null;
-        this.callbacks = {}; // event -> [callback1, callback2, ...]
+        this.callbacks = {};
+        this.url = null;
+        this.reconnectTimeout = null;
+        this.manualDisconnect = false;
     }
 
     connect(url) {
-        if (this.socket && this.socket.readyState === WebSocket.OPEN) return;
-        
-        this.socket = new WebSocket(url);
+        this.url = url;
+        this.manualDisconnect = false;
+        this._connect();
+    }
+
+    _connect() {
+        if (this.socket && (this.socket.readyState === WebSocket.OPEN || this.socket.readyState === WebSocket.CONNECTING)) {
+            return;
+        }
+
+        console.log('[WS]: Connecting to', this.url);
+        this.socket = new WebSocket(this.url);
 
         this.socket.onopen = () => {
-            console.log('WebSocket Connected to:', url);
+            console.log('[WS]: Connected successfully');
+            if (this.reconnectTimeout) {
+                clearTimeout(this.reconnectTimeout);
+                this.reconnectTimeout = null;
+            }
         };
 
         this.socket.onmessage = (e) => {
             try {
                 const data = JSON.parse(e.data);
                 const eventType = data.type || 'message';
-                
-                // Dispatch to specific event listeners
                 if (this.callbacks[eventType]) {
                     this.callbacks[eventType].forEach(cb => cb(data));
                 }
-                
-                // Also dispatch to a general 'message' listener
                 if (eventType !== 'message' && this.callbacks['message']) {
                     this.callbacks['message'].forEach(cb => cb(data));
                 }
             } catch (err) {
-                console.error("Error parsing WebSocket message:", err);
+                console.error("[WS ERROR]:", err);
             }
         };
 
-        this.socket.onclose = () => {
-            console.log('WebSocket Disconnected');
+        this.socket.onclose = (e) => {
+            if (!this.manualDisconnect) {
+                console.warn(`[WS]: Disconnected (Code: ${e.code}). Reconnecting in 3s...`);
+                this.socket = null;
+                if (this.reconnectTimeout) clearTimeout(this.reconnectTimeout);
+                this.reconnectTimeout = setTimeout(() => this._connect(), 3000);
+            } else {
+                console.log('[WS]: Manual disconnect');
+            }
+        };
+
+        this.socket.onerror = (err) => {
+            console.error('[WS ERROR]: Socket error encountered');
+            this.socket.close();
         };
     }
 
     send(data) {
         if (this.socket && this.socket.readyState === WebSocket.OPEN) {
-            console.log("[WS OUTGOING]:", JSON.stringify(data, null, 2));
             this.socket.send(JSON.stringify(data));
         } else {
             console.error("[WS ERROR]: Send Failed. Socket state:", this.socket?.readyState);
@@ -47,9 +70,7 @@ class WebSocketService {
     }
 
     on(event, callback) {
-        if (!this.callbacks[event]) {
-            this.callbacks[event] = [];
-        }
+        if (!this.callbacks[event]) this.callbacks[event] = [];
         this.callbacks[event].push(callback);
     }
 
@@ -59,6 +80,8 @@ class WebSocketService {
     }
 
     disconnect() {
+        this.manualDisconnect = true;
+        if (this.reconnectTimeout) clearTimeout(this.reconnectTimeout);
         if (this.socket) {
             this.socket.close();
             this.socket = null;

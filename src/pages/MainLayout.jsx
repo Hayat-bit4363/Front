@@ -22,6 +22,12 @@ const MainLayout = () => {
     const localStreamRef = React.useRef(null);
 
     useEffect(() => {
+        if (activeCall && localStreamRef.current && localVideoRef.current) {
+            localVideoRef.current.srcObject = localStreamRef.current;
+        }
+    }, [activeCall]);
+
+    useEffect(() => {
         if (!user) return;
 
         const token = localStorage.getItem('access_token');

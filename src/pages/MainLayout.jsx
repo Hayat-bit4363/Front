@@ -21,6 +21,7 @@ const MainLayout = () => {
     const remoteVideoRef = React.useRef(null);
     const localStreamRef = React.useRef(null);
     const remoteStreamRef = React.useRef(null);
+    const candidateQueue = React.useRef([]);
 
     useEffect(() => {
         if (activeCall) {
@@ -129,11 +130,13 @@ const MainLayout = () => {
         };
 
         pc.ontrack = (event) => {
-            console.log("WebRTC: Remote stream received");
+            console.log("WebRTC: Remote stream received", event.streams[0].getTracks().length, "tracks");
             const remoteStream = event.streams[0];
             remoteStreamRef.current = remoteStream;
             if (remoteVideoRef.current) {
                 remoteVideoRef.current.srcObject = remoteStream;
+                // Explicitly call play to handle some browser policies
+                remoteVideoRef.current.play().catch(e => console.warn("Auto-play blocked:", e));
             }
         };
 
@@ -172,31 +175,58 @@ const MainLayout = () => {
         const pc = pcRef.current;
         if (!pc) return;
         
-        await pc.setRemoteDescription(new RTCSessionDescription(data.offer));
-        const answer = await pc.createAnswer();
-        await pc.setLocalDescription(answer);
+        try {
+            await pc.setRemoteDescription(new RTCSessionDescription(data.offer));
+            
+            // Process queued candidates
+            while (candidateQueue.current.length > 0) {
+                const cand = candidateQueue.current.shift();
+                await pc.addIceCandidate(new RTCIceCandidate(cand));
+            }
 
-        notificationSocket.send({
-            type: 'call_signal',
-            signal: 'answer',
-            answer: answer,
-            target_user_id: data.sender_id,
-            conversation_id: data.conversation_id,
-            sender_id: user.id
-        });
+            const answer = await pc.createAnswer();
+            await pc.setLocalDescription(answer);
+
+            notificationSocket.send({
+                type: 'call_signal',
+                signal: 'answer',
+                answer: answer,
+                target_user_id: data.sender_id,
+                conversation_id: data.conversation_id,
+                sender_id: user.id
+            });
+        } catch (err) {
+            console.error("Error handling offer:", err);
+        }
     };
 
     const handleAnswer = async (data) => {
         const pc = pcRef.current;
         if (pc) {
-            await pc.setRemoteDescription(new RTCSessionDescription(data.answer));
+            try {
+                await pc.setRemoteDescription(new RTCSessionDescription(data.answer));
+                // Process queued candidates
+                while (candidateQueue.current.length > 0) {
+                    const cand = candidateQueue.current.shift();
+                    await pc.addIceCandidate(new RTCIceCandidate(cand));
+                }
+            } catch (err) {
+                console.error("Error handling answer:", err);
+            }
         }
     };
 
     const handleCandidate = async (data) => {
         const pc = pcRef.current;
-        if (pc) {
-            await pc.addIceCandidate(new RTCIceCandidate(data.candidate));
+        if (pc && pc.remoteDescription && pc.remoteDescription.type) {
+            try {
+                await pc.addIceCandidate(new RTCIceCandidate(data.candidate));
+            } catch (e) {
+                console.warn("Error adding received ice candidate", e);
+            }
+        } else {
+            console.log("Queuing ICE candidate (remote description not set yet)");
+            candidateQueue.current.push(data.candidate);
         }
     };
 
@@ -213,6 +243,7 @@ const MainLayout = () => {
             pcRef.current.close();
             pcRef.current = null;
         }
+        candidateQueue.current = [];
         setActiveCall(null);
         setIncomingCall(null);
     };
@@ -293,8 +324,7 @@ const MainLayout = () => {
                                     {activeCall.sender === user.username ? '?' : activeCall.sender[0]?.toUpperCase()}
                                 </div>
                                 <h2 style={{ color: 'white', marginTop: '20px' }}>Voice Call in progress...</h2>
-                                <audio ref={remoteVideoRef} autoPlay style={{ display: 'none' }} />
-                                <audio ref={localVideoRef} autoPlay muted style={{ display: 'none' }} />
+                                <audio ref={remoteVideoRef} autoPlay playsInline style={{ width: '1px', height: '1px', opacity: 0 }} />
                                 <div style={{ marginTop: '20px', color: '#2ecc71', fontWeight: 'bold' }}>Active Audio Stream</div>
                             </div>
                         )}

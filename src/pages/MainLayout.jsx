@@ -64,8 +64,11 @@ const MainLayout = () => {
                 // Ensure we carry over the call_type from our local state if it's missing in the signal
                 setActiveCall(prev => ({ ...data, call_type: data.call_type || prev?.call_type || 'video' }));
                 setIncomingCall(null);
-                // Sender starts the RTC Offer
-                if (dataSenderId === currentUserId) {
+                
+                // CRITICAL FIX: The person who sent the init (original caller) 
+                // is now the target of the 'accepted' signal and should start the handshake.
+                if (String(data.target_user_id) === currentUserId) {
+                    console.log("Accepted! Initiating handshake as original caller...");
                     await startCallHandshake(data);
                 }
             } else if (data.signal === 'hangup') {
@@ -130,12 +133,21 @@ const MainLayout = () => {
         };
 
         pc.ontrack = (event) => {
-            console.log("WebRTC: Remote stream received", event.streams[0].getTracks().length, "tracks");
-            const remoteStream = event.streams[0];
-            remoteStreamRef.current = remoteStream;
+            console.log("WebRTC: Remote track received");
+            let remoteStream = event.streams[0];
+            if (!remoteStream) {
+                // Fallback for browsers that don't provide streams[0]
+                if (!remoteStreamRef.current) {
+                    remoteStreamRef.current = new MediaStream();
+                }
+                remoteStreamRef.current.addTrack(event.track);
+                remoteStream = remoteStreamRef.current;
+            } else {
+                remoteStreamRef.current = remoteStream;
+            }
+
             if (remoteVideoRef.current) {
                 remoteVideoRef.current.srcObject = remoteStream;
-                // Explicitly call play to handle some browser policies
                 remoteVideoRef.current.play().catch(e => console.warn("Auto-play blocked:", e));
             }
         };
@@ -172,8 +184,16 @@ const MainLayout = () => {
     };
 
     const handleOffer = async (data) => {
-        const pc = pcRef.current;
-        if (!pc) return;
+        console.log("Received WebRTC Offer");
+        let pc = pcRef.current;
+        
+        // If PC doesn't exist (e.g., offer arrived very fast), set it up
+        if (!pc) {
+            console.log("PC not ready for offer, initializing...");
+            const callType = data.call_type || 'video';
+            await startMedia(callType);
+            pc = createPeerConnection(String(data.sender_id), data.conversation_id);
+        }
         
         try {
             await pc.setRemoteDescription(new RTCSessionDescription(data.offer));

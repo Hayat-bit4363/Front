@@ -15,26 +15,32 @@ const MainLayout = () => {
     const [incomingCall, setIncomingCall] = useState(null);
     const [activeCall, setActiveCall] = useState(null);
     
-    // WebRTC Refs
+    // WebRTC & Stream State
     const pcRef = React.useRef(null);
     const localVideoRef = React.useRef(null);
     const remoteVideoRef = React.useRef(null);
-    const localStreamRef = React.useRef(null);
-    const remoteStreamRef = React.useRef(null);
+    const [localStream, setLocalStream] = useState(null);
+    const [remoteStream, setRemoteStream] = useState(null);
     const candidateQueue = React.useRef([]);
 
     useEffect(() => {
         if (activeCall) {
+            console.log("Syncing media streams to elements...");
             // Sync local stream
-            if (localStreamRef.current && localVideoRef.current) {
-                localVideoRef.current.srcObject = localStreamRef.current;
+            if (localStream && localVideoRef.current) {
+                if (localVideoRef.current.srcObject !== localStream) {
+                    localVideoRef.current.srcObject = localStream;
+                }
             }
-            // Sync remote stream (if it arrived before the overlay rendered)
-            if (remoteStreamRef.current && remoteVideoRef.current) {
-                remoteVideoRef.current.srcObject = remoteStreamRef.current;
+            // Sync remote stream
+            if (remoteStream && remoteVideoRef.current) {
+                if (remoteVideoRef.current.srcObject !== remoteStream) {
+                    remoteVideoRef.current.srcObject = remoteStream;
+                    remoteVideoRef.current.play().catch(e => console.warn("Auto-play failed:", e));
+                }
             }
         }
-    }, [activeCall]);
+    }, [activeCall, localStream, remoteStream]);
 
     useEffect(() => {
         if (!user) return;
@@ -106,8 +112,7 @@ const MainLayout = () => {
                     facingMode: 'user'
                 } : false
             });
-            localStreamRef.current = stream;
-            if (localVideoRef.current) localVideoRef.current.srcObject = stream;
+            setLocalStream(stream);
             return stream;
         } catch (err) {
             console.error("Media Error:", err);
@@ -134,27 +139,13 @@ const MainLayout = () => {
 
         pc.ontrack = (event) => {
             console.log("WebRTC: Remote track received");
-            let remoteStream = event.streams[0];
-            if (!remoteStream) {
-                // Fallback for browsers that don't provide streams[0]
-                if (!remoteStreamRef.current) {
-                    remoteStreamRef.current = new MediaStream();
-                }
-                remoteStreamRef.current.addTrack(event.track);
-                remoteStream = remoteStreamRef.current;
-            } else {
-                remoteStreamRef.current = remoteStream;
-            }
-
-            if (remoteVideoRef.current) {
-                remoteVideoRef.current.srcObject = remoteStream;
-                remoteVideoRef.current.play().catch(e => console.warn("Auto-play blocked:", e));
-            }
+            const rStream = event.streams[0] || new MediaStream([event.track]);
+            setRemoteStream(rStream);
         };
 
-        if (localStreamRef.current) {
-            localStreamRef.current.getTracks().forEach(track => {
-                pc.addTrack(track, localStreamRef.current);
+        if (localStream) {
+            localStream.getTracks().forEach(track => {
+                pc.addTrack(track, localStream);
             });
         }
 
@@ -251,13 +242,13 @@ const MainLayout = () => {
     };
 
     const stopAllMedia = () => {
-        if (localStreamRef.current) {
-            localStreamRef.current.getTracks().forEach(track => track.stop());
-            localStreamRef.current = null;
+        if (localStream) {
+            localStream.getTracks().forEach(track => track.stop());
+            setLocalStream(null);
         }
-        if (remoteStreamRef.current) {
-            remoteStreamRef.current.getTracks().forEach(track => track.stop());
-            remoteStreamRef.current = null;
+        if (remoteStream) {
+            remoteStream.getTracks().forEach(track => track.stop());
+            setRemoteStream(null);
         }
         if (pcRef.current) {
             pcRef.current.close();

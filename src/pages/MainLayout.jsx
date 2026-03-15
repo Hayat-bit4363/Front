@@ -37,19 +37,22 @@ const MainLayout = () => {
     useEffect(() => { incomingCallRef.current = incomingCall; }, [incomingCall]);
     useEffect(() => { activeCallRef.current   = activeCall;   }, [activeCall]);
 
-    // Attach streams to video/audio elements whenever they change
+    // Attach local stream → runs when localStream changes OR after call overlay mounts
     useEffect(() => {
         if (localVideoRef.current && localStream) {
+            console.log('[WebRTC] Attaching local stream to video element');
             localVideoRef.current.srcObject = localStream;
         }
-    }, [localStream]);
+    }, [localStream, activeCall]);   // <-- activeCall ensures re-run after overlay renders
 
+    // Attach remote stream → runs when remoteStream changes OR after call overlay mounts
     useEffect(() => {
         if (remoteVideoRef.current && remoteStream) {
+            console.log('[WebRTC] Attaching remote stream to video/audio element');
             remoteVideoRef.current.srcObject = remoteStream;
             remoteVideoRef.current.play().catch(e => console.warn('[WebRTC] Remote play blocked:', e));
         }
-    }, [remoteStream]);
+    }, [remoteStream, activeCall]);  // <-- activeCall ensures re-run after overlay renders
 
     // ─── Media helpers ────────────────────────────────────────────────────────
 

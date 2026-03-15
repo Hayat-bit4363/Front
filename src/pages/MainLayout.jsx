@@ -1,131 +1,90 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import Navbar from '../components/Navbar';
 import { Outlet } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { notificationSocket } from '../services/websocket';
 import { WS_BASE_URL } from '../config';
 
-// WebRTC STUN Turn server config
+// WebRTC STUN server config — add more for production reliability
 const ICE_SERVERS = {
-    iceServers: [{ urls: 'stun:stun.l.google.com:19302' }]
+    iceServers: [
+        { urls: 'stun:stun.l.google.com:19302' },
+        { urls: 'stun:stun1.l.google.com:19302' },
+    ]
 };
 
 const MainLayout = () => {
     const { user } = useAuth();
-    const [incomingCall, setIncomingCall] = useState(null);
-    const [activeCall, setActiveCall] = useState(null);
-    
-    // WebRTC & Stream State
-    const pcRef = React.useRef(null);
-    const localVideoRef = React.useRef(null);
-    const remoteVideoRef = React.useRef(null);
-    const [localStream, setLocalStream] = useState(null);
-    const [remoteStream, setRemoteStream] = useState(null);
-    const candidateQueue = React.useRef([]);
 
+    // UI State
+    const [incomingCall, setIncomingCall]   = useState(null);
+    const [activeCall, setActiveCall]       = useState(null);
+    const [localStream, setLocalStream]     = useState(null);  // for UI display
+    const [remoteStream, setRemoteStream]   = useState(null);  // for UI display
+
+    // Refs — accessed inside async closures, always fresh
+    const pcRef             = useRef(null);
+    const localStreamRef    = useRef(null);
+    const candidateQueue    = useRef([]);
+    const incomingCallRef   = useRef(null);   // mirror of incomingCall for closures
+    const activeCallRef     = useRef(null);   // mirror of activeCall  for closures
+
+    // Video/Audio elements
+    const localVideoRef  = useRef(null);
+    const remoteVideoRef = useRef(null);
+
+    // Keep refs in sync with state
+    useEffect(() => { incomingCallRef.current = incomingCall; }, [incomingCall]);
+    useEffect(() => { activeCallRef.current   = activeCall;   }, [activeCall]);
+
+    // Attach streams to video/audio elements whenever they change
     useEffect(() => {
-        if (activeCall) {
-            console.log("Syncing media streams to elements...");
-            // Sync local stream
-            if (localStream && localVideoRef.current) {
-                if (localVideoRef.current.srcObject !== localStream) {
-                    localVideoRef.current.srcObject = localStream;
-                }
-            }
-            // Sync remote stream
-            if (remoteStream && remoteVideoRef.current) {
-                if (remoteVideoRef.current.srcObject !== remoteStream) {
-                    remoteVideoRef.current.srcObject = remoteStream;
-                    remoteVideoRef.current.play().catch(e => console.warn("Auto-play failed:", e));
-                }
-            }
+        if (localVideoRef.current && localStream) {
+            localVideoRef.current.srcObject = localStream;
         }
-    }, [activeCall, localStream, remoteStream]);
+    }, [localStream]);
 
     useEffect(() => {
-        if (!user) return;
+        if (remoteVideoRef.current && remoteStream) {
+            remoteVideoRef.current.srcObject = remoteStream;
+            remoteVideoRef.current.play().catch(e => console.warn('[WebRTC] Remote play blocked:', e));
+        }
+    }, [remoteStream]);
 
-        const token = localStorage.getItem('access_token');
-        const authUrl = token ? `?token=${token}` : '';
+    // ─── Media helpers ────────────────────────────────────────────────────────
 
-        // Connect Global Notifications
-        console.log(`MainLayout: Connecting to Notification WS for ${user.username}...`);
-        notificationSocket.connect(`${WS_BASE_URL}/ws/notifications/${authUrl}`);
-
-        const handleCall = async (data) => {
-            console.log("MainLayout: WebRTC Signal:", data.signal, "from", data.sender);
-            
-            const currentUserId = String(user.id);
-            const dataSenderId = String(data.sender_id);
-            
-            if (data.signal === 'init') {
-                if (dataSenderId !== currentUserId) {
-                    setIncomingCall(data);
-                }
-            } else if (data.signal === 'rejected') {
-                setIncomingCall(null);
-                setActiveCall(null);
-                alert(`${data.sender} rejected the call`);
-            } else if (data.signal === 'accepted') {
-                // Ensure we carry over the call_type from our local state if it's missing in the signal
-                setActiveCall(prev => ({ ...data, call_type: data.call_type || prev?.call_type || 'video' }));
-                setIncomingCall(null);
-                
-                // CRITICAL FIX: The person who sent the init (original caller) 
-                // is now the target of the 'accepted' signal and should start the handshake.
-                if (String(data.target_user_id) === currentUserId) {
-                    console.log("Accepted! Initiating handshake as original caller...");
-                    await startCallHandshake(data);
-                }
-            } else if (data.signal === 'hangup') {
-                stopAllMedia();
-            } else if (data.signal === 'offer') {
-                handleOffer(data);
-            } else if (data.signal === 'answer') {
-                handleAnswer(data);
-            } else if (data.signal === 'candidate') {
-                handleCandidate(data);
-            }
-        };
-
-        notificationSocket.on('call_signal', handleCall);
-
-        return () => {
-            console.log("MainLayout: Cleaning up listeners...");
-            notificationSocket.off('call_signal', handleCall);
-        };
-    }, [user?.username]);
-
-    // --- WebRTC Logic ---
     const startMedia = async (callType) => {
         try {
-            console.log("Requesting media for:", callType);
-            const stream = await navigator.mediaDevices.getUserMedia({ 
-                audio: {
-                    echoCancellation: true,
-                    noiseSuppression: true,
-                    autoGainControl: true
-                }, 
-                video: callType === 'video' ? {
-                    width: { ideal: 1280 },
-                    height: { ideal: 720 },
-                    facingMode: 'user'
-                } : false
+            console.log('[WebRTC] Requesting media, type:', callType);
+            const stream = await navigator.mediaDevices.getUserMedia({
+                audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
+                video: callType === 'video'
+                    ? { width: { ideal: 1280 }, height: { ideal: 720 }, facingMode: 'user' }
+                    : false
             });
-            setLocalStream(stream);
+            localStreamRef.current = stream;
+            setLocalStream(stream);          // triggers the useEffect above → attaches to <video>
             return stream;
         } catch (err) {
-            console.error("Media Error:", err);
-            alert("Could not access camera/microphone. Please check permissions.");
+            console.error('[WebRTC] Media error:', err);
+            alert('Could not access camera/microphone. Please check permissions.');
             return null;
         }
     };
 
-    const createPeerConnection = (targetId, conversationId) => {
+    const createPC = (targetId, conversationId, stream) => {
+        // Close any existing PC first
+        if (pcRef.current) {
+            pcRef.current.close();
+            pcRef.current = null;
+        }
+
         const pc = new RTCPeerConnection(ICE_SERVERS);
-        
+
+        // Send ICE candidates to the other peer
         pc.onicecandidate = (event) => {
             if (event.candidate) {
+                console.log('[WebRTC] Sending ICE candidate');
                 notificationSocket.send({
                     type: 'call_signal',
                     signal: 'candidate',
@@ -137,15 +96,22 @@ const MainLayout = () => {
             }
         };
 
-        pc.ontrack = (event) => {
-            console.log("WebRTC: Remote track received");
-            const rStream = event.streams[0] || new MediaStream([event.track]);
-            setRemoteStream(rStream);
+        pc.oniceconnectionstatechange = () => {
+            console.log('[WebRTC] ICE state:', pc.iceConnectionState);
         };
 
-        if (localStream) {
-            localStream.getTracks().forEach(track => {
-                pc.addTrack(track, localStream);
+        // When remote tracks arrive, display them
+        pc.ontrack = (event) => {
+            console.log('[WebRTC] Remote track received:', event.track.kind);
+            const rStream = event.streams?.[0] ?? new MediaStream([event.track]);
+            setRemoteStream(rStream);  // triggers the useEffect above → attaches to <video>/<audio>
+        };
+
+        // Add local tracks
+        if (stream) {
+            stream.getTracks().forEach(track => {
+                console.log('[WebRTC] Adding local track:', track.kind);
+                pc.addTrack(track, stream);
             });
         }
 
@@ -153,50 +119,67 @@ const MainLayout = () => {
         return pc;
     };
 
+    const drainCandidateQueue = async (pc) => {
+        while (candidateQueue.current.length > 0) {
+            const cand = candidateQueue.current.shift();
+            try { await pc.addIceCandidate(new RTCIceCandidate(cand)); }
+            catch (e) { console.warn('[WebRTC] Failed to add queued candidate:', e); }
+        }
+    };
+
+    // ─── Call-flow handlers ───────────────────────────────────────────────────
+
+    // Called by the original CALLER after receiver clicks Accept
     const startCallHandshake = async (data) => {
-        const callType = data.call_type || (activeCall ? activeCall.call_type : 'video');
+        const callType = data.call_type || 'video';
+        console.log('[WebRTC] Starting handshake as caller. callType:', callType);
+
         const stream = await startMedia(callType);
         if (!stream) return;
 
-        const targetId = String(data.sender_id) === String(user.id) ? String(data.target_user_id) : String(data.sender_id);
-        const pc = createPeerConnection(targetId, data.conversation_id);
-        
-        const offer = await pc.createOffer();
-        await pc.setLocalDescription(offer);
-        
-        notificationSocket.send({
-            type: 'call_signal',
-            signal: 'offer',
-            offer: offer,
-            target_user_id: targetId,
-            conversation_id: data.conversation_id,
-            sender_id: user.id
-        });
+        // The target is the person who accepted (sender of the 'accepted' signal)
+        const targetId = String(data.sender_id);
+        const pc = createPC(targetId, data.conversation_id, stream);
+
+        try {
+            const offer = await pc.createOffer();
+            await pc.setLocalDescription(offer);
+            console.log('[WebRTC] Sending offer to', targetId);
+
+            notificationSocket.send({
+                type: 'call_signal',
+                signal: 'offer',
+                offer: offer,
+                target_user_id: targetId,
+                conversation_id: data.conversation_id,
+                sender_id: user.id,
+                call_type: callType
+            });
+        } catch (err) {
+            console.error('[WebRTC] Error creating offer:', err);
+        }
     };
 
+    // Called on the RECEIVER's side when they get an 'offer'
     const handleOffer = async (data) => {
-        console.log("Received WebRTC Offer");
+        console.log('[WebRTC] Received offer from', data.sender_id);
         let pc = pcRef.current;
-        
-        // If PC doesn't exist (e.g., offer arrived very fast), set it up
+
+        // If PC not ready yet (offer beat the acceptCall flow), initialize now
         if (!pc) {
-            console.log("PC not ready for offer, initializing...");
+            console.warn('[WebRTC] PC not found on offer, initializing...');
             const callType = data.call_type || 'video';
-            await startMedia(callType);
-            pc = createPeerConnection(String(data.sender_id), data.conversation_id);
+            const stream = await startMedia(callType);
+            pc = createPC(String(data.sender_id), data.conversation_id, stream);
         }
-        
+
         try {
             await pc.setRemoteDescription(new RTCSessionDescription(data.offer));
-            
-            // Process queued candidates
-            while (candidateQueue.current.length > 0) {
-                const cand = candidateQueue.current.shift();
-                await pc.addIceCandidate(new RTCIceCandidate(cand));
-            }
+            await drainCandidateQueue(pc);
 
             const answer = await pc.createAnswer();
             await pc.setLocalDescription(answer);
+            console.log('[WebRTC] Sending answer to', data.sender_id);
 
             notificationSocket.send({
                 type: 'call_signal',
@@ -207,68 +190,108 @@ const MainLayout = () => {
                 sender_id: user.id
             });
         } catch (err) {
-            console.error("Error handling offer:", err);
+            console.error('[WebRTC] Error handling offer:', err);
         }
     };
 
     const handleAnswer = async (data) => {
         const pc = pcRef.current;
-        if (pc) {
-            try {
-                await pc.setRemoteDescription(new RTCSessionDescription(data.answer));
-                // Process queued candidates
-                while (candidateQueue.current.length > 0) {
-                    const cand = candidateQueue.current.shift();
-                    await pc.addIceCandidate(new RTCIceCandidate(cand));
-                }
-            } catch (err) {
-                console.error("Error handling answer:", err);
-            }
+        if (!pc) return;
+        try {
+            console.log('[WebRTC] Received answer');
+            await pc.setRemoteDescription(new RTCSessionDescription(data.answer));
+            await drainCandidateQueue(pc);
+        } catch (err) {
+            console.error('[WebRTC] Error handling answer:', err);
         }
     };
 
     const handleCandidate = async (data) => {
         const pc = pcRef.current;
-        if (pc && pc.remoteDescription && pc.remoteDescription.type) {
-            try {
-                await pc.addIceCandidate(new RTCIceCandidate(data.candidate));
-            } catch (e) {
-                console.warn("Error adding received ice candidate", e);
-            }
+        if (pc && pc.remoteDescription?.type) {
+            try { await pc.addIceCandidate(new RTCIceCandidate(data.candidate)); }
+            catch (e) { console.warn('[WebRTC] Error adding candidate:', e); }
         } else {
-            console.log("Queuing ICE candidate (remote description not set yet)");
+            console.log('[WebRTC] Queuing ICE candidate');
             candidateQueue.current.push(data.candidate);
         }
     };
 
     const stopAllMedia = () => {
-        if (localStream) {
-            localStream.getTracks().forEach(track => track.stop());
-            setLocalStream(null);
-        }
-        if (remoteStream) {
-            remoteStream.getTracks().forEach(track => track.stop());
-            setRemoteStream(null);
-        }
-        if (pcRef.current) {
-            pcRef.current.close();
-            pcRef.current = null;
-        }
+        localStreamRef.current?.getTracks().forEach(t => t.stop());
+        localStreamRef.current = null;
+        setLocalStream(null);
+        setRemoteStream(null);
+        pcRef.current?.close();
+        pcRef.current = null;
         candidateQueue.current = [];
         setActiveCall(null);
         setIncomingCall(null);
     };
 
-    const acceptCall = async () => {
-        const callType = incomingCall.call_type || 'video';
-        const stream = await startMedia(callType);
-        if (!stream) {
-            rejectCall();
-            return;
-        }
+    // ─── Notification WS effect ───────────────────────────────────────────────
 
-        const targetId = String(incomingCall.sender_id);
-        createPeerConnection(targetId, incomingCall.conversation_id);
+    useEffect(() => {
+        if (!user) return;
+
+        const token = localStorage.getItem('access_token');
+        const authUrl = token ? `?token=${token}` : '';
+
+        console.log('[WS] Connecting notification socket for', user.username);
+        notificationSocket.connect(`${WS_BASE_URL}/ws/notifications/${authUrl}`);
+
+        const handleCallSignal = async (data) => {
+            console.log('[WebRTC] Signal received:', data.signal, 'from', data.sender_id);
+            const currentUserId = String(user.id);
+
+            if (data.signal === 'init') {
+                if (String(data.sender_id) !== currentUserId) {
+                    setIncomingCall(data);
+                }
+            } else if (data.signal === 'rejected') {
+                setIncomingCall(null);
+                setActiveCall(null);
+                alert(`Call rejected by ${data.sender}`);
+
+            } else if (data.signal === 'accepted') {
+                // The 'accepted' signal's target_user_id is the original caller
+                setActiveCall(prev => ({ ...data, call_type: data.call_type || prev?.call_type || 'video' }));
+                setIncomingCall(null);
+
+                if (String(data.target_user_id) === currentUserId) {
+                    console.log('[WebRTC] I am the caller — starting handshake');
+                    await startCallHandshake(data);
+                }
+
+            } else if (data.signal === 'hangup') {
+                stopAllMedia();
+            } else if (data.signal === 'offer') {
+                await handleOffer(data);
+            } else if (data.signal === 'answer') {
+                await handleAnswer(data);
+            } else if (data.signal === 'candidate') {
+                await handleCandidate(data);
+            }
+        };
+
+        notificationSocket.on('call_signal', handleCallSignal);
+        return () => {
+            notificationSocket.off('call_signal', handleCallSignal);
+        };
+    }, [user?.id]);   // only re-register when the user changes
+
+    // ─── UI actions ───────────────────────────────────────────────────────────
+
+    const acceptCall = async () => {
+        const call = incomingCallRef.current;
+        if (!call) return;
+
+        const callType = call.call_type || 'video';
+        const stream = await startMedia(callType);
+        if (!stream) { rejectCall(); return; }
+
+        const targetId = String(call.sender_id);
+        createPC(targetId, call.conversation_id, stream);
 
         notificationSocket.send({
             type: 'call_signal',
@@ -276,35 +299,44 @@ const MainLayout = () => {
             sender: user.username,
             sender_id: String(user.id),
             target_user_id: targetId,
-            conversation_id: incomingCall.conversation_id,
+            conversation_id: call.conversation_id,
             call_type: callType
         });
-        setActiveCall(incomingCall);
+
+        setActiveCall({ ...call, call_type: callType });
         setIncomingCall(null);
     };
 
     const hangUp = () => {
-        const targetId = String(activeCall.sender_id) === String(user.id) ? String(activeCall.target_user_id) : String(activeCall.sender_id);
+        const call = activeCallRef.current;
+        if (!call) return;
+        const targetId = String(call.sender_id) === String(user.id)
+            ? String(call.target_user_id)
+            : String(call.sender_id);
         notificationSocket.send({
             type: 'call_signal',
             signal: 'hangup',
             sender: user.username,
             target_user_id: targetId,
-            conversation_id: activeCall.conversation_id
+            conversation_id: call.conversation_id
         });
         stopAllMedia();
     };
 
     const rejectCall = () => {
+        const call = incomingCallRef.current;
+        if (!call) return;
         notificationSocket.send({
             type: 'call_signal',
             signal: 'rejected',
             sender: user.username,
-            target_user_id: incomingCall.sender_id,
-            conversation_id: incomingCall.conversation_id
+            target_user_id: call.sender_id,
+            conversation_id: call.conversation_id
         });
         setIncomingCall(null);
     };
+
+    // ─── Render ───────────────────────────────────────────────────────────────
 
     return (
         <div style={{ display: 'flex', flexDirection: 'column', height: '100vh', position: 'relative' }}>
@@ -317,37 +349,45 @@ const MainLayout = () => {
             {activeCall && (
                 <div style={styles.callOverlay}>
                     <div style={{ ...styles.callCard, width: '95%', maxWidth: '900px', height: '85vh', display: 'flex', flexDirection: 'column' }}>
-                        
+
                         {activeCall.call_type === 'video' ? (
                             <div style={styles.videoGrid}>
+                                {/* Remote video fills the grid */}
                                 <div style={styles.videoWrapper}>
                                     <video ref={remoteVideoRef} autoPlay playsInline style={styles.remoteVideo} />
                                     <div style={styles.videoLabel}>Remote</div>
                                 </div>
+                                {/* Self preview, bottom-right corner */}
                                 <div style={styles.localVideoContainer}>
                                     <video ref={localVideoRef} autoPlay playsInline muted style={styles.localVideo} />
-                                    <div style={styles.videoLabel}>Self</div>
+                                    <div style={styles.videoLabel}>You</div>
                                 </div>
                             </div>
                         ) : (
+                            /* Voice-call avatar view */
                             <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', backgroundColor: '#000', borderRadius: '16px' }}>
                                 <div style={{ ...styles.callAvatar, width: '150px', height: '150px', fontSize: '4rem' }}>
                                     {activeCall.sender === user.username ? '?' : activeCall.sender[0]?.toUpperCase()}
                                 </div>
-                                <h2 style={{ color: 'white', marginTop: '20px' }}>Voice Call in progress...</h2>
-                                <audio ref={remoteVideoRef} autoPlay playsInline style={{ width: '1px', height: '1px', opacity: 0 }} />
-                                <div style={{ marginTop: '20px', color: '#2ecc71', fontWeight: 'bold' }}>Active Audio Stream</div>
+                                <h2 style={{ color: 'white', marginTop: '20px' }}>Voice Call in progress…</h2>
+                                {/* 1×1 invisible audio element — must NOT be display:none or some browsers block it */}
+                                <audio ref={remoteVideoRef} autoPlay playsInline style={{ width: 1, height: 1, opacity: 0, position: 'absolute' }} />
+                                <div style={{ marginTop: '20px', color: '#2ecc71', fontWeight: 'bold' }}>🔊 Audio Stream Active</div>
                             </div>
                         )}
-                        
+
                         <div style={styles.callFooter}>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '15px' }}>
-                                <div style={{ ...styles.callAvatar, width: '40px', height: '40px', fontSize: '1.2rem', margin: 0 }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                                <div style={{ ...styles.callAvatar, width: 40, height: 40, fontSize: '1.2rem', margin: 0 }}>
                                     {activeCall.sender === user.username ? 'R' : activeCall.sender[0]?.toUpperCase()}
                                 </div>
-                                <h3 style={{ color: 'white' }}>Talking with {activeCall.sender === user.username ? 'Receiver' : activeCall.sender}</h3>
+                                <h3 style={{ color: 'white', margin: 0 }}>
+                                    Talking with {activeCall.sender === user.username ? 'Receiver' : activeCall.sender}
+                                </h3>
                             </div>
-                            <button onClick={hangUp} style={{ ...styles.callBtn, backgroundColor: '#e74c3c', maxWidth: '200px' }}>Hang Up</button>
+                            <button onClick={hangUp} style={{ ...styles.callBtn, backgroundColor: '#e74c3c', maxWidth: 200 }}>
+                                📵 Hang Up
+                            </button>
                         </div>
                     </div>
                 </div>
@@ -361,10 +401,12 @@ const MainLayout = () => {
                             {incomingCall.sender[0]?.toUpperCase()}
                         </div>
                         <h3 style={{ margin: '10px 0', color: 'white' }}>{incomingCall.sender}</h3>
-                        <p style={{ color: '#ccc', marginBottom: '20px' }}>Incoming {incomingCall.call_type} call...</p>
+                        <p style={{ color: '#ccc', marginBottom: '20px' }}>
+                            Incoming {incomingCall.call_type} call…
+                        </p>
                         <div style={styles.callActions}>
-                            <button onClick={acceptCall} style={{ ...styles.callBtn, backgroundColor: '#2ecc71' }}>Accept</button>
-                            <button onClick={rejectCall} style={{ ...styles.callBtn, backgroundColor: '#e74c3c' }}>Reject</button>
+                            <button onClick={acceptCall} style={{ ...styles.callBtn, backgroundColor: '#2ecc71' }}>✅ Accept</button>
+                            <button onClick={rejectCall} style={{ ...styles.callBtn, backgroundColor: '#e74c3c' }}>❌ Reject</button>
                         </div>
                     </div>
                 </div>
@@ -375,67 +417,48 @@ const MainLayout = () => {
 
 const styles = {
     callOverlay: {
-        position: 'fixed',
-        top: 0,
-        left: 0,
-        right: 0,
-        bottom: 0,
-        backgroundColor: 'rgba(0,0,0,0.85)',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        zIndex: 9999,
-        backdropFilter: 'blur(5px)'
+        position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
+        backgroundColor: 'rgba(0,0,0,0.85)', display: 'flex',
+        alignItems: 'center', justifyContent: 'center',
+        zIndex: 9999, backdropFilter: 'blur(5px)'
     },
     callCard: {
-        backgroundColor: '#1c1c1c',
-        padding: '40px',
-        borderRadius: '24px',
-        textAlign: 'center',
-        width: '320px',
-        boxShadow: '0 10px 30px rgba(0,0,0,0.5)',
+        backgroundColor: '#1c1c1c', padding: '40px', borderRadius: '24px',
+        textAlign: 'center', width: '320px', boxShadow: '0 10px 30px rgba(0,0,0,0.5)',
         border: '1px solid #333'
     },
     callAvatar: {
-        width: '80px',
-        height: '80px',
-        borderRadius: '50%',
-        backgroundColor: 'var(--primary-color)',
-        margin: '0 auto 20px',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        fontSize: '2rem',
-        color: 'white',
-        fontWeight: 'bold'
+        width: '80px', height: '80px', borderRadius: '50%',
+        backgroundColor: 'var(--primary-color)', margin: '0 auto 20px',
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+        fontSize: '2rem', color: 'white', fontWeight: 'bold'
     },
-    callActions: {
-        display: 'flex',
-        gap: '15px',
-        justifyContent: 'center'
-    },
+    callActions: { display: 'flex', gap: '15px', justifyContent: 'center' },
     callBtn: {
-        padding: '12px 24px',
-        borderRadius: '12px',
-        border: 'none',
-        color: 'white',
-        fontWeight: 'bold',
-        cursor: 'pointer',
-        fontSize: '1rem',
-        transition: 'transform 0.2s',
-        flex: 1
+        padding: '12px 24px', borderRadius: '12px', border: 'none', color: 'white',
+        fontWeight: 'bold', cursor: 'pointer', fontSize: '1rem',
+        transition: 'transform 0.2s', flex: 1
     },
-    videoGrid: { flex: 1, position: 'relative', overflow: 'hidden', borderRadius: '16px', backgroundColor: '#000', marginBottom: '20px', display: 'flex' },
+    videoGrid: {
+        flex: 1, position: 'relative', overflow: 'hidden', borderRadius: '16px',
+        backgroundColor: '#000', marginBottom: '20px', display: 'flex'
+    },
     videoWrapper: { flex: 1, position: 'relative' },
-    remoteVideo: { width: '100%', height: '100%', objectFit: 'cover' },
-    localVideoContainer: { 
+    remoteVideo:  { width: '100%', height: '100%', objectFit: 'cover' },
+    localVideoContainer: {
         position: 'absolute', bottom: '20px', right: '20px', width: '200px', height: '150px',
         borderRadius: '12px', overflow: 'hidden', border: '2px solid rgba(255,255,255,0.2)',
         boxShadow: '0 4px 12px rgba(0,0,0,0.5)', zIndex: 10
     },
     localVideo: { width: '100%', height: '100%', objectFit: 'cover' },
-    videoLabel: { position: 'absolute', top: '10px', left: '10px', color: '#fff', fontSize: '12px', backgroundColor: 'rgba(0,0,0,0.5)', padding: '2px 8px', borderRadius: '4px' },
-    callFooter: { height: '80px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0 20px', borderTop: '1px solid #333' }
+    videoLabel: {
+        position: 'absolute', top: '10px', left: '10px', color: '#fff', fontSize: '12px',
+        backgroundColor: 'rgba(0,0,0,0.5)', padding: '2px 8px', borderRadius: '4px'
+    },
+    callFooter: {
+        height: '80px', display: 'flex', alignItems: 'center',
+        justifyContent: 'space-between', padding: '0 20px', borderTop: '1px solid #333'
+    }
 };
 
 export default MainLayout;

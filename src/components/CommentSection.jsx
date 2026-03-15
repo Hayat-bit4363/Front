@@ -1,9 +1,8 @@
 import React, { useState } from 'react';
 import api from '../services/api';
 
-const CommentSection = ({ postId, comments, onCommentAdded }) => {
+const CommentSection = ({ postId, comments, onCommentAdded, isExpanded, onToggle }) => {
     const [text, setText] = useState('');
-    const [expanded, setExpanded] = useState(false);
 
     const handleSubmit = async (e) => {
         e.preventDefault();
@@ -21,12 +20,12 @@ const CommentSection = ({ postId, comments, onCommentAdded }) => {
     return (
         <div style={styles.container}>
             <div style={styles.actions}>
-                <button onClick={() => setExpanded(!expanded)} style={styles.toggleBtn}>
+                <button onClick={onToggle} style={styles.toggleBtn}>
                     💬 {comments ? comments.length : 0} Comments
                 </button>
             </div>
 
-            {expanded && (
+            {isExpanded && (
                 <div style={styles.list}>
                     {comments.map(comment => (
                         <div key={comment.id} style={styles.comment}>

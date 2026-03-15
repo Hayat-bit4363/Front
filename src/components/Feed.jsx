@@ -7,6 +7,7 @@ const Feed = () => {
     const [posts, setPosts] = useState([]);
     const [content, setContent] = useState('');
     const [image, setImage] = useState(null);
+    const [expandedComments, setExpandedComments] = useState({});
     const { primaryColor } = useTheme();
 
     useEffect(() => {
@@ -68,6 +69,13 @@ const Feed = () => {
         }
     };
 
+    const toggleComments = (postId) => {
+        setExpandedComments(prev => ({
+            ...prev,
+            [postId]: !prev[postId]
+        }));
+    };
+
     return (
         <div style={styles.feedContainer}>
             {/* Create Post */}
@@ -120,7 +128,7 @@ const Feed = () => {
                         >
                             ThumbUp
                         </button>
-                        <button style={styles.actionBtn}>Comment</button>
+                        <button style={styles.actionBtn} onClick={() => toggleComments(post.id)}>Comment</button>
                         <button style={styles.actionBtn} onClick={() => handleShare(post.id)}>Share</button>
                     </div>
 
@@ -128,6 +136,8 @@ const Feed = () => {
                         postId={post.id}
                         comments={post.comments}
                         onCommentAdded={(c) => handleCommentAdded(post.id, c)}
+                        isExpanded={!!expandedComments[post.id]}
+                        onToggle={() => toggleComments(post.id)}
                     />
                 </div>
             ))}

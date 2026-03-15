@@ -35,6 +35,7 @@ const ChatWindow = ({ conversation, messages, currentUser, onMessageSent, setMes
 
     const startRecording = async () => {
         try {
+            audioChunksRef.current = []; // Clean start
             const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
             
             // Comprehensive MIME type check for cross-browser recording (Safari likes mp4/aac, Chrome likes webm)
@@ -64,6 +65,9 @@ const ChatWindow = ({ conversation, messages, currentUser, onMessageSent, setMes
                 const blob = new Blob(audioChunksRef.current, { type: supportedType });
                 setAudioBlob(blob);
                 audioChunksRef.current = [];
+                
+                // Stop tracks ONLY after onstop to ensure all data is captured
+                stream.getTracks().forEach(track => track.stop());
             };
 
             mediaRecorderRef.current.start();
@@ -78,14 +82,12 @@ const ChatWindow = ({ conversation, messages, currentUser, onMessageSent, setMes
         if (mediaRecorderRef.current && isRecording) {
             mediaRecorderRef.current.stop();
             setIsRecording(false);
-            // Stop tracks
-            mediaRecorderRef.current.stream.getTracks().forEach(track => track.stop());
         }
     };
 
     const handleSend = async (e) => {
         if (e) e.preventDefault();
-        if ((!text.trim() && !image && !audioBlob) || !conversation) return;
+        if ((!text.trim() && !selectedFile && !audioBlob) || !conversation) return;
 
         const formData = new FormData();
         formData.append('conversation', conversation.id);

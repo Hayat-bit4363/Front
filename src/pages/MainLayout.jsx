@@ -20,10 +20,18 @@ const MainLayout = () => {
     const localVideoRef = React.useRef(null);
     const remoteVideoRef = React.useRef(null);
     const localStreamRef = React.useRef(null);
+    const remoteStreamRef = React.useRef(null);
 
     useEffect(() => {
-        if (activeCall && localStreamRef.current && localVideoRef.current) {
-            localVideoRef.current.srcObject = localStreamRef.current;
+        if (activeCall) {
+            // Sync local stream
+            if (localStreamRef.current && localVideoRef.current) {
+                localVideoRef.current.srcObject = localStreamRef.current;
+            }
+            // Sync remote stream (if it arrived before the overlay rendered)
+            if (remoteStreamRef.current && remoteVideoRef.current) {
+                remoteVideoRef.current.srcObject = remoteStreamRef.current;
+            }
         }
     }, [activeCall]);
 
@@ -52,7 +60,8 @@ const MainLayout = () => {
                 setActiveCall(null);
                 alert(`${data.sender} rejected the call`);
             } else if (data.signal === 'accepted') {
-                setActiveCall(data);
+                // Ensure we carry over the call_type from our local state if it's missing in the signal
+                setActiveCall(prev => ({ ...data, call_type: data.call_type || prev?.call_type || 'video' }));
                 setIncomingCall(null);
                 // Sender starts the RTC Offer
                 if (dataSenderId === currentUserId) {
@@ -78,17 +87,27 @@ const MainLayout = () => {
     }, [user?.username]);
 
     // --- WebRTC Logic ---
-    const startMedia = async (isCaller) => {
+    const startMedia = async (callType) => {
         try {
+            console.log("Requesting media for:", callType);
             const stream = await navigator.mediaDevices.getUserMedia({ 
-                audio: true, 
-                video: true // Always request both for now
+                audio: {
+                    echoCancellation: true,
+                    noiseSuppression: true,
+                    autoGainControl: true
+                }, 
+                video: callType === 'video' ? {
+                    width: { ideal: 1280 },
+                    height: { ideal: 720 },
+                    facingMode: 'user'
+                } : false
             });
             localStreamRef.current = stream;
             if (localVideoRef.current) localVideoRef.current.srcObject = stream;
             return stream;
         } catch (err) {
             console.error("Media Error:", err);
+            alert("Could not access camera/microphone. Please check permissions.");
             return null;
         }
     };
@@ -111,8 +130,10 @@ const MainLayout = () => {
 
         pc.ontrack = (event) => {
             console.log("WebRTC: Remote stream received");
+            const remoteStream = event.streams[0];
+            remoteStreamRef.current = remoteStream;
             if (remoteVideoRef.current) {
-                remoteVideoRef.current.srcObject = event.streams[0];
+                remoteVideoRef.current.srcObject = remoteStream;
             }
         };
 
@@ -127,7 +148,10 @@ const MainLayout = () => {
     };
 
     const startCallHandshake = async (data) => {
-        const stream = await startMedia(true);
+        const callType = data.call_type || (activeCall ? activeCall.call_type : 'video');
+        const stream = await startMedia(callType);
+        if (!stream) return;
+
         const targetId = String(data.sender_id) === String(user.id) ? String(data.target_user_id) : String(data.sender_id);
         const pc = createPeerConnection(targetId, data.conversation_id);
         
@@ -179,6 +203,11 @@ const MainLayout = () => {
     const stopAllMedia = () => {
         if (localStreamRef.current) {
             localStreamRef.current.getTracks().forEach(track => track.stop());
+            localStreamRef.current = null;
+        }
+        if (remoteStreamRef.current) {
+            remoteStreamRef.current.getTracks().forEach(track => track.stop());
+            remoteStreamRef.current = null;
         }
         if (pcRef.current) {
             pcRef.current.close();
@@ -189,7 +218,13 @@ const MainLayout = () => {
     };
 
     const acceptCall = async () => {
-        await startMedia(false);
+        const callType = incomingCall.call_type || 'video';
+        const stream = await startMedia(callType);
+        if (!stream) {
+            rejectCall();
+            return;
+        }
+
         const targetId = String(incomingCall.sender_id);
         createPeerConnection(targetId, incomingCall.conversation_id);
 
@@ -199,7 +234,8 @@ const MainLayout = () => {
             sender: user.username,
             sender_id: String(user.id),
             target_user_id: targetId,
-            conversation_id: incomingCall.conversation_id
+            conversation_id: incomingCall.conversation_id,
+            call_type: callType
         });
         setActiveCall(incomingCall);
         setIncomingCall(null);
@@ -238,20 +274,38 @@ const MainLayout = () => {
             {/* Active Call Overlay */}
             {activeCall && (
                 <div style={styles.callOverlay}>
-                    <div style={{ ...styles.callCard, width: '90%', maxWidth: '900px', height: '80vh', display: 'flex', flexDirection: 'column' }}>
-                        <div style={styles.videoGrid}>
-                            <div style={styles.videoWrapper}>
-                                <video ref={remoteVideoRef} autoPlay playsInline style={styles.remoteVideo} />
-                                <div style={styles.videoLabel}>Remote</div>
+                    <div style={{ ...styles.callCard, width: '95%', maxWidth: '900px', height: '85vh', display: 'flex', flexDirection: 'column' }}>
+                        
+                        {activeCall.call_type === 'video' ? (
+                            <div style={styles.videoGrid}>
+                                <div style={styles.videoWrapper}>
+                                    <video ref={remoteVideoRef} autoPlay playsInline style={styles.remoteVideo} />
+                                    <div style={styles.videoLabel}>Remote</div>
+                                </div>
+                                <div style={styles.localVideoContainer}>
+                                    <video ref={localVideoRef} autoPlay playsInline muted style={styles.localVideo} />
+                                    <div style={styles.videoLabel}>Self</div>
+                                </div>
                             </div>
-                            <div style={styles.localVideoContainer}>
-                                <video ref={localVideoRef} autoPlay playsInline muted style={styles.localVideo} />
-                                <div style={styles.videoLabel}>Self</div>
+                        ) : (
+                            <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', backgroundColor: '#000', borderRadius: '16px' }}>
+                                <div style={{ ...styles.callAvatar, width: '150px', height: '150px', fontSize: '4rem' }}>
+                                    {activeCall.sender === user.username ? '?' : activeCall.sender[0]?.toUpperCase()}
+                                </div>
+                                <h2 style={{ color: 'white', marginTop: '20px' }}>Voice Call in progress...</h2>
+                                <audio ref={remoteVideoRef} autoPlay style={{ display: 'none' }} />
+                                <audio ref={localVideoRef} autoPlay muted style={{ display: 'none' }} />
+                                <div style={{ marginTop: '20px', color: '#2ecc71', fontWeight: 'bold' }}>Active Audio Stream</div>
                             </div>
-                        </div>
+                        )}
                         
                         <div style={styles.callFooter}>
-                            <h3 style={{ color: 'white' }}>Talking with {activeCall.sender === user.username ? 'Receiver' : activeCall.sender}</h3>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '15px' }}>
+                                <div style={{ ...styles.callAvatar, width: '40px', height: '40px', fontSize: '1.2rem', margin: 0 }}>
+                                    {activeCall.sender === user.username ? 'R' : activeCall.sender[0]?.toUpperCase()}
+                                </div>
+                                <h3 style={{ color: 'white' }}>Talking with {activeCall.sender === user.username ? 'Receiver' : activeCall.sender}</h3>
+                            </div>
                             <button onClick={hangUp} style={{ ...styles.callBtn, backgroundColor: '#e74c3c', maxWidth: '200px' }}>Hang Up</button>
                         </div>
                     </div>
